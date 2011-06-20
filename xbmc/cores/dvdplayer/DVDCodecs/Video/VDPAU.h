@@ -73,7 +73,8 @@ public:
   virtual ~CVDPAU();
   
   virtual bool Open      (AVCodecContext* avctx, const enum PixelFormat, unsigned int surfaces = 0);
-  virtual int  Decode    (AVCodecContext* avctx, AVFrame* frame);
+  virtual int  Decode    (AVCodecContext* avctx, AVFrame* frame) {return Decode(avctx, frame, false);};
+  virtual int  Decode    (AVCodecContext* avctx, AVFrame* frame, bool bDrain = false);
   virtual bool GetPicture(AVCodecContext* avctx, AVFrame* frame, DVDVideoPicture* picture);
   virtual void Reset();
   virtual void Close();
@@ -136,6 +137,7 @@ public:
   void PostProcOff();
   EINTERLACEMETHOD GetDeinterlacingMethod(bool log = false);
   void SetHWUpscaling();
+  bool DiscardPresentPicture();
 
   pictureAge picAge;
   vdpau_render_state *past[2], *current, *future[2];
