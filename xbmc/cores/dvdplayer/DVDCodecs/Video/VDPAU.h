@@ -89,9 +89,9 @@ public:
   bool MakePixmap(int index, int width, int height);
   bool MakePixmapGL(int index);
 
-  void ReleasePixmap();
-  void BindPixmap();
-  bool IsBufferValid();
+  void ReleasePixmap(int flipBufferIdx);
+  void BindPixmap(int flipBufferIdx);
+  bool IsBufferValid(int flipBufferIdx);
 
   PFNGLXBINDTEXIMAGEEXTPROC    glXBindTexImageEXT;
   PFNGLXRELEASETEXIMAGEEXTPROC glXReleaseTexImageEXT;
@@ -109,8 +109,8 @@ public:
   PFNGLVDPAUGETSURFACEIVNVPROC glVDPAUGetSurfaceivNV;
 #endif
 
-  GLuint GLGetSurfaceTexture(int plane, int field);
-  bool SetTexture(int plane, int field);
+  GLuint GLGetSurfaceTexture(int plane, int field, int flipBufferIdx);
+  int SetTexture(int plane, int field, int flipBufferIdx);
   GLuint GetTexture();
   GLuint m_glTexture;
   virtual long Release();
@@ -139,6 +139,7 @@ public:
   EINTERLACEMETHOD GetDeinterlacingMethod(bool log = false);
   void SetHWUpscaling();
   bool DiscardPresentPicture();
+  bool DiscardOutputPicture();
 
   pictureAge picAge;
   vdpau_render_state *past[2], *current, *future[2];
@@ -253,7 +254,7 @@ protected:
   virtual void OnExit();
   virtual void Process();
   void FlushMixer();
-  int NextBuffer();
+//  int NextBuffer();
 
   struct MixerMessage
   {
@@ -293,8 +294,8 @@ protected:
   std::deque<OutputPicture*> m_freeOutPic;
   std::deque<OutputPicture*> m_usedOutPic;
   OutputPicture *m_presentPicture;
+  OutputPicture *m_outputPicture;
   OutputPicture *m_flipBuffer[3];
-  int m_flipBufferIdx;
   unsigned int m_mixerCmd;
   CCriticalSection m_mixerSec, m_outPicSec, m_videoSurfaceSec, m_flipSec;
   CEvent m_picSignal;
@@ -303,7 +304,6 @@ protected:
   bool m_binterlacedFrame;
   int m_dropCount;
   volatile bool glInteropFinish;
-  bool m_bsurfaceMapped;
   bool m_dropState;
   bool m_bPostProc;
 
