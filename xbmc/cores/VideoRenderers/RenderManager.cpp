@@ -47,6 +47,7 @@
 #endif
 
 #include "RenderCapture.h"
+#include "../dvdplayer/DVDCodecs/Video/VDPAU.h"
 
 /* to use the same as player */
 #include "../dvdplayer/DVDClock.h"
@@ -641,11 +642,12 @@ void CXBMCRenderManager::Present()
 
   Render(true, 0, 255);
 
+  lock.Leave();
   /* wait for this present to be valid */
   if(g_graphicsContext.IsFullScreenVideo())
     WaitPresentTime(m_presenttime);
 
-  m_presentevent.Set();
+//  m_presentevent.Set();
 }
 
 /* simple present method */
@@ -731,7 +733,7 @@ void CXBMCRenderManager::UpdateResolution()
 }
 
 
-int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic)
+int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double presenttime)
 {
   CSharedLock lock(m_sharedSection);
   if (!m_pRenderer)
@@ -764,7 +766,9 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic)
     CDVDCodecUtils::CopyDXVA2Picture(&image, &pic);
   }
 #ifdef HAVE_LIBVDPAU
-  else if(pic.format == DVDVideoPicture::FMT_VDPAU)
+  else if(pic.format == DVDVideoPicture::FMT_VDPAU || pic.format == DVDVideoPicture::FMT_VDPAU_420)
+      if (pic.vdpau)
+        pic.vdpau->Present(index);
     m_pRenderer->AddProcessor(pic.vdpau);
 #endif
 #ifdef HAVE_LIBOPENMAX
@@ -779,6 +783,13 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic)
   else if(pic.format == DVDVideoPicture::FMT_VAAPI)
     m_pRenderer->AddProcessor(*pic.vaapi);
 #endif
+
+  // set pts
+  image.presenttime = presenttime;
+
+  // upload texture
+  m_pRenderer->Upload(index);
+
   m_pRenderer->ReleaseImage(index, false);
 
   return index;
