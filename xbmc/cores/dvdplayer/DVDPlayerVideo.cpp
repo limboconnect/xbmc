@@ -653,6 +653,14 @@ void CDVDPlayerVideo::Process()
           while (bGotMsg)
           {
             iResult = fromMsg.iResult;
+
+            if( iResult & EOS_FLUSH )
+            {
+              iDecoderState = VC_FLUSHED;
+              m_pVideoOutput->Dispose();
+              break;
+            }
+
             if(m_started == false)
             {
               m_codecname = m_pVideoCodec->GetName();
@@ -1060,6 +1068,15 @@ int CDVDPlayerVideo::OutputPicture(const DVDVideoPicture* src, double pts)
     m_output.color_primaries = pPicture->color_primaries;
     m_output.color_transfer = pPicture->color_transfer;
     m_output.color_range = pPicture->color_range;
+
+    if (bResChange)
+    {
+      if (m_pVideoCodec->HwFreeResources())
+      {
+        CLog::Log(LOGNOTICE,"CDVDPlayerVideo::OutputPicture - freed hw resources");
+        return EOS_FLUSH;
+      }
+    }
   }
 
   double maxfps  = 60.0;
