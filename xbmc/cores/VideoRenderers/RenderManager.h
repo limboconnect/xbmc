@@ -37,6 +37,7 @@
 #include "threads/Thread.h"
 #include "settings/VideoSettings.h"
 #include "OverlayRenderer.h"
+#include "../dvdplayer/DVDClock.h"
 
 class CRenderCapture;
 
@@ -68,12 +69,15 @@ public:
   void SetViewMode(int iViewMode) { CSharedLock lock(m_sharedSection); if (m_pRenderer) m_pRenderer->SetViewMode(iViewMode); };
 
   // Functions called from mplayer
-  bool Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, float fps, unsigned flags, unsigned int format, bool &bResChange);
+  bool Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, float fps, unsigned flags, unsigned int format);
   bool IsConfigured();
 
-  int AddVideoPicture(DVDVideoPicture& picture, double presenttime);
+  int AddVideoPicture(DVDVideoPicture& picture, int source, double presenttime, EFIELDSYNC sync, CDVDClock *clock, bool &late);
 
   void FlipPage(volatile bool& bStop, double timestamp = 0.0, int source = -1, EFIELDSYNC sync = FS_NONE);
+  int WaitForBuffer(volatile bool& bStop);
+  void ReleaseProcessor();
+  void NotifyFlip();
   unsigned int PreInit();
   void UnInit();
   bool Flush();
@@ -191,6 +195,7 @@ protected:
   void PresentWeave(bool clear, DWORD flags, DWORD alpha);
   void PresentBob(bool clear, DWORD flags, DWORD alpha);
   void PresentBlend(bool clear, DWORD flags, DWORD alpha);
+  void CheckNextBuffer();
 
   bool m_bPauseDrawing;   // true if we should pause rendering
 
@@ -229,7 +234,9 @@ protected:
   int        m_presentsource;
   CEvent     m_presentevent;
   CEvent     m_flushEvent;
-
+  CEvent     m_flipEvent;
+  CDVDClock  *m_pClock;
+  bool       m_late;
 
   OVERLAY::CRenderer m_overlays;
 

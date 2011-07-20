@@ -104,6 +104,7 @@ CXBMCRenderManager::CXBMCRenderManager()
   m_presentmethod = PRESENT_METHOD_SINGLE;
   m_bReconfigured = false;
   m_hasCaptures = false;
+  m_pClock = 0;
 }
 
 CXBMCRenderManager::~CXBMCRenderManager()
@@ -212,7 +213,7 @@ CStdString CXBMCRenderManager::GetVSyncState()
   return state;
 }
 
-bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, float fps, unsigned flags, unsigned int format, bool &bResChange)
+bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, float fps, unsigned flags, unsigned int format)
 {
   /* make sure any queued frame was fully presented */
   double timeout = m_presenttime + 0.1;
@@ -248,9 +249,8 @@ bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsi
     m_bReconfigured = true;
     m_presentstep = PRESENT_IDLE;
     m_presentevent.Set();
+    m_pClock = 0;
   }
-
-  bResChange = (res != m_pRenderer->GetResolution(true)) ? true : false;
 
   return result;
 }
@@ -280,6 +280,9 @@ void CXBMCRenderManager::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
   { CRetakeLock<CExclusiveLock> lock(m_sharedSection);
     if (!m_pRenderer)
       return;
+
+    if (m_presentstep == PRESENT_IDLE)
+      CheckNextBuffer();
 
     if(m_presentstep == PRESENT_FLIP)
     {
@@ -635,6 +638,9 @@ void CXBMCRenderManager::Present()
     if (!m_pRenderer)
       return;
 
+    if (m_presentstep == PRESENT_IDLE)
+      CheckNextBuffer();
+
     if(m_presentstep == PRESENT_FLIP)
     {
       m_overlays.Flip();
@@ -646,7 +652,6 @@ void CXBMCRenderManager::Present()
 
   Render(true, 0, 255);
 
-  lock.Leave();
   /* wait for this present to be valid */
   if(g_graphicsContext.IsFullScreenVideo())
     WaitPresentTime(m_presenttime);
@@ -737,7 +742,7 @@ void CXBMCRenderManager::UpdateResolution()
 }
 
 
-int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double presenttime)
+int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double presenttime, EFIELDSYNC sync, CDVDClock *clock, bool &late)
 {
   CSharedLock lock(m_sharedSection);
   if (!m_pRenderer)
@@ -745,9 +750,17 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double presenttime
 
   if(m_pRenderer->AddVideoPicture(&pic))
     return 1;
+  m_pClock = clock;
 
   YV12Image image;
-  int index = m_pRenderer->GetImage(&image);
+  source = m_pRenderer->GetNextBufferIndex();
+  if (source < 0)
+  {
+    CLog::Log(LOGERROR, "CXBMCRenderManager::AddVideoPicture - error getting next buffer");
+    return -1;
+  }
+
+  int index = m_pRenderer->GetImage(&image, source);
 
   if(index < 0)
     return index;
@@ -788,13 +801,137 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double presenttime
     m_pRenderer->AddProcessor(*pic.vaapi);
 #endif
 
-  // set pts
-  image.presenttime = presenttime;
+  // set pts and sync
+  *image.pPresenttime = presenttime;
+  *image.pSync = sync;
 
   // upload texture
   m_pRenderer->Upload(index);
 
   m_pRenderer->ReleaseImage(index, false);
 
+  // signal new frame to application
+  g_application.NewFrame();
+
+  // signal lateness to player
+  late = m_late ? true : false;
+  m_late = false;
+
   return index;
+}
+
+int CXBMCRenderManager::WaitForBuffer(volatile bool& bStop)
+{
+  CSharedLock lock(m_sharedSection);
+  if (!m_pRenderer)
+    return -1;
+
+  double timeout = GetPresentTime() + 0.05;
+  while(!m_pRenderer->HasFreeBuffer() && !bStop)
+  {
+    lock.Leave();
+    m_flipEvent.WaitMSec(50);
+    if(GetPresentTime() > timeout && !bStop)
+    {
+//      m_pRenderer->LogBuffers();
+      CLog::Log(LOGWARNING, "CRenderManager::WaitForBuffer - timeout waiting buffer");
+      return -1;
+    }
+    lock.Enter();
+  }
+  return 1;
+}
+
+void CXBMCRenderManager::NotifyFlip()
+{
+  if (!m_pRenderer)
+    return;
+
+  CRetakeLock<CExclusiveLock> lock(m_sharedSection);
+
+  m_pRenderer->NotifyFlip();
+  m_flipEvent.Set();
+}
+
+void CXBMCRenderManager::CheckNextBuffer()
+{
+  if(!m_pRenderer || !m_pClock) return;
+
+  YV12Image image;
+  int source = m_pRenderer->GetCurrentBufferIndex();
+  if (source == -1)
+    return;
+
+  int index = m_pRenderer->GetImage(&image, source);
+
+  // calculate render time
+  double iPlayingClock, iCurrentClock, iSleepTime, iPresentTime;
+  iPlayingClock = m_pClock->GetClock(iCurrentClock, false);
+  iSleepTime = *image.pPresenttime - iPlayingClock;
+  iPresentTime = iCurrentClock + iSleepTime;
+
+  if (iSleepTime <= 0)
+    m_late = true;
+
+  double timestamp = iPresentTime/DVD_TIME_BASE;
+  if(timestamp - GetPresentTime() > MAXPRESENTDELAY)
+    timestamp =  GetPresentTime() + MAXPRESENTDELAY;
+
+  if(g_graphicsContext.IsFullScreenVideo()
+      || timestamp <= GetPresentTime())
+  {
+    m_presenttime  = timestamp;
+    m_presentfield = *image.pSync;
+    m_presentstep  = PRESENT_FLIP;
+    m_presentsource = -1;
+    EDEINTERLACEMODE deinterlacemode = g_settings.m_currentVideoSettings.m_DeinterlaceMode;
+    EINTERLACEMETHOD interlacemethod = g_settings.m_currentVideoSettings.m_InterlaceMethod;
+    if (interlacemethod == VS_INTERLACEMETHOD_AUTO)
+      interlacemethod = m_pRenderer->AutoInterlaceMethod();
+
+    bool invert = false;
+
+    if (deinterlacemode == VS_DEINTERLACEMODE_OFF)
+      m_presentmethod = PRESENT_METHOD_SINGLE;
+    else
+    {
+      if (deinterlacemode == VS_DEINTERLACEMODE_AUTO && m_presentfield == FS_NONE)
+        m_presentmethod = PRESENT_METHOD_SINGLE;
+      else
+      {
+        if      (interlacemethod == VS_INTERLACEMETHOD_RENDER_BLEND)            m_presentmethod = PRESENT_METHOD_BLEND;
+        else if (interlacemethod == VS_INTERLACEMETHOD_RENDER_WEAVE)            m_presentmethod = PRESENT_METHOD_WEAVE;
+        else if (interlacemethod == VS_INTERLACEMETHOD_RENDER_WEAVE_INVERTED) { m_presentmethod = PRESENT_METHOD_WEAVE ; invert = true; }
+        else if (interlacemethod == VS_INTERLACEMETHOD_RENDER_BOB)              m_presentmethod = PRESENT_METHOD_BOB;
+        else if (interlacemethod == VS_INTERLACEMETHOD_RENDER_BOB_INVERTED)   { m_presentmethod = PRESENT_METHOD_BOB; invert = true; }
+        else if (interlacemethod == VS_INTERLACEMETHOD_DXVA_BOB)                m_presentmethod = PRESENT_METHOD_BOB;
+        else if (interlacemethod == VS_INTERLACEMETHOD_DXVA_BEST)               m_presentmethod = PRESENT_METHOD_BOB;
+        else                                                                    m_presentmethod = PRESENT_METHOD_SINGLE;
+
+        /* default to odd field if we want to deinterlace and don't know better */
+        if (deinterlacemode == VS_DEINTERLACEMODE_FORCE && m_presentfield == FS_NONE)
+          m_presentfield = FS_TOP;
+
+        /* invert present field */
+        if(invert)
+        {
+          if( m_presentfield == FS_BOT )
+            m_presentfield = FS_TOP;
+          else
+            m_presentfield = FS_BOT;
+        }
+      }
+    }
+  }
+
+  m_pRenderer->ReleaseImage(index, false);
+}
+
+void CXBMCRenderManager::ReleaseProcessor()
+{
+  CRetakeLock<CExclusiveLock> lock(m_sharedSection);
+  if (!m_pRenderer)
+    return;
+
+  m_pRenderer->ReleaseProcessor();
 }

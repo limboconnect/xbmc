@@ -261,7 +261,7 @@ bool CVDPAU::Open(AVCodecContext* avctx, const enum PixelFormat, unsigned int su
 
 CVDPAU::~CVDPAU()
 {
-  GLFiniInterop();
+  GLFinish();
   Close();
 }
 
@@ -402,10 +402,14 @@ bool CVDPAU::MakePixmap(int index, int width, int height)
 
 bool CVDPAU::IsBufferValid(int flipBufferIdx)
 {
-  if (recover)
-     return false;
+  CSharedLock lock(m_DecoderSection);
 
-  CSingleLock lock(m_flipSec);
+  { CSharedLock dLock(m_DisplaySection);
+    if (m_DisplayState != VDPAU_OPEN)
+      return false;
+  }
+
+  CSingleLock fLock(m_flipSec);
   if (!m_flipBuffer[flipBufferIdx] && !m_presentPicture)
     return false;
 
@@ -434,7 +438,17 @@ int CVDPAU::SetTexture(int plane, int field, int flipBufferIdx)
       return -1;
   }
   else
-    return 0;
+  {
+    if (m_flipBuffer[flipBufferIdx])
+    {
+      if (!glIsTexture(m_flipBuffer[flipBufferIdx]->texture[0]))
+        glGenTextures(1, m_flipBuffer[flipBufferIdx]->texture);
+      m_glTexture = m_flipBuffer[flipBufferIdx]->texture[0];
+      return 0;
+    }
+    else
+      return -1;
+  }
 }
 
 GLuint CVDPAU::GetTexture()
@@ -459,7 +473,11 @@ void CVDPAU::BindPixmap(int flipBufferIdx)
   if (m_flipBuffer[flipBufferIdx])
   {
     GLXPixmap glPixmap = m_flipBuffer[flipBufferIdx]->glPixmap;
+    bool bound = m_flipBuffer[flipBufferIdx]->bound;
+    m_flipBuffer[flipBufferIdx]->bound = true;
     lock.Leave();
+    if (bound)
+      glXReleaseTexImageEXT(m_Display, glPixmap, GLX_FRONT_LEFT_EXT);
     glXBindTexImageEXT(m_Display, glPixmap, GLX_FRONT_LEFT_EXT, NULL);
   }
   else CLog::Log(LOGERROR,"(VDPAU) BindPixmap called without valid pixmap");
@@ -1269,6 +1287,7 @@ bool CVDPAU::ConfigOutputMethod(AVCodecContext *avctx, AVFrame *pFrame)
           return false;
 
         m_allOutPic[i].outputSurface = VDP_INVALID_HANDLE;
+        m_allOutPic[i].bound = false;
       }
       m_vdpauOutputMethod = OUTPUT_PIXMAP;
     }
@@ -1707,6 +1726,11 @@ int CVDPAU::Decode(AVCodecContext *avctx, AVFrame *pFrame, bool bDrain)
 //        CLog::Log(LOGWARNING, "CVDPAU::Decode: yuv still pictures in queue");
 //      }
 
+      if (m_freeOutPic.empty())
+      {
+        CLog::Log(LOGERROR,"CVDPAU::Decode: yuv - nor free pic");
+        return VC_ERROR;
+      }
       OutputPicture *outPic = m_freeOutPic.front();
       m_freeOutPic.pop_front();
       memset(&outPic->DVDPic, 0, sizeof(DVDVideoPicture));
@@ -2012,19 +2036,6 @@ void CVDPAU::SetDropState(bool bDrop)
   m_dropState = bDrop;
 }
 
-bool CVDPAU::FreeResources()
-{
-  recover = true;
-  glInteropFinish = true;
-
-  CLog::Log(LOGNOTICE,"CVDPAU::FreeResources");
-
-  FiniVDPAUOutput();
-  FiniVDPAUProcs();
-
-  return true;
-}
-
 void CVDPAU::Present(int flipBufferIdx)
 {
 //  CLog::Log(LOGNOTICE,"%s",__FUNCTION__);
@@ -2040,7 +2051,7 @@ void CVDPAU::Present(int flipBufferIdx)
   if (!m_presentPicture)
     CLog::Log(LOGWARNING, "CVDPAU::Present: present picture is NULL");
 
-  CSingleLock lock(m_flipSec);
+  CSingleLock fLock(m_flipSec);
   if (m_flipBuffer[flipBufferIdx])
   {
     if (m_flipBuffer[flipBufferIdx]->render)
@@ -2394,6 +2405,24 @@ void CVDPAU::OnExit()
   CLog::Log(LOGNOTICE, "CVDPAU::OnExit: Mixer Thread terminated");
 }
 
+void CVDPAU::GLFinish()
+{
+#ifdef GL_NV_vdpau_interop
+  GLFiniInterop();
+#endif
+  for (int i=0; i < NUM_OUTPUT_SURFACES; i++)
+  {
+//    GLXPixmap glPixmap = m_allOutPic[i].glPixmap;
+//    if (glPixmap && m_allOutPic[i].bound)
+//      glXReleaseTexImageEXT(m_Display, glPixmap, GLX_FRONT_LEFT_EXT);
+    if (glIsTexture(m_allOutPic[i].texture[0]))
+    {
+      glDeleteTextures(1, m_allOutPic[i].texture);
+    }
+  }
+  CLog::Log(LOGNOTICE, "CVDPAU::GLFinish: cleared up gl resources");
+}
+
 #ifdef GL_NV_vdpau_interop
 void CVDPAU::GLInitInterop()
 {
@@ -2565,8 +2594,6 @@ GLuint CVDPAU::GLGetSurfaceTexture(int plane, int field, int flipBufferIdx)
 {
   GLuint glReturn = 0;
 
-#ifdef GL_NV_vdpau_interop
-
   //check if current output method is valid
   if (m_GlInteropStatus != m_vdpauOutputMethod)
   {
@@ -2611,7 +2638,6 @@ GLuint CVDPAU::GLGetSurfaceTexture(int plane, int field, int flipBufferIdx)
   else
     CLog::Log(LOGWARNING, "CVDPAU::GLGetSurfaceTexture - no picture, index %d", flipBufferIdx);
 
-#endif
   return glReturn;
 }
 

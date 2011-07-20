@@ -31,7 +31,7 @@
 #include "windowing/WindowingFactory.h"
 
 CDVDPlayerVideoOutput::CDVDPlayerVideoOutput(CDVDPlayerVideo *videoplayer)
-: CThread()
+: CThread("Video Output Thread")
 {
   m_pVideoPlayer = videoplayer;
   m_pts = 0;
@@ -50,7 +50,6 @@ CDVDPlayerVideoOutput::~CDVDPlayerVideoOutput()
 void CDVDPlayerVideoOutput::Start()
 {
   Create();
-  SetName("Video Output Thread");
 }
 
 void CDVDPlayerVideoOutput::Reset()
@@ -70,6 +69,8 @@ void CDVDPlayerVideoOutput::Reset()
 
 void CDVDPlayerVideoOutput::Dispose()
 {
+  m_bStop = true;
+  m_toMsgSignal.Set();
   StopThread();
   m_recover = true;
 }
@@ -103,7 +104,7 @@ bool CDVDPlayerVideoOutput::GetMessage(FromOutputMessage &msg, bool bWait)
 {
   bool bReturn = false;
 
-  while (1)
+  while (!m_bStop)
   {
     if (bWait && !m_fromMsgSignal.WaitMSec(300))
     {
@@ -165,12 +166,13 @@ void CDVDPlayerVideoOutput::Process()
       FromOutputMessage fromMsg;
       ToOutputMessage toMsg = m_toOutputMessage.front();
       m_toOutputMessage.pop();
+
       bool gotPic;
-      if (toMsg.bLastPic && !flushed)
+      if (toMsg.bLastPic)
       {
         m_picture.iFlags &= ~DVP_FLAG_INTERLACED;
         m_picture.iFlags |= DVP_FLAG_NOSKIP;
-        gotPic = true;
+        gotPic = false;
       }
       else
         gotPic = GetPicture(toMsg, fromMsg);
@@ -183,7 +185,9 @@ void CDVDPlayerVideoOutput::Process()
           fromMsg.iResult = m_pVideoPlayer->OutputPicture(&m_picture,m_pts);
 
           if (fromMsg.iResult & EOS_FLUSH)
+          {
             flushed = true;
+          }
         }
         else
           fromMsg.iResult = EOS_FLUSH;
@@ -251,21 +255,14 @@ bool CDVDPlayerVideoOutput::GetPicture(ToOutputMessage toMsg, FromOutputMessage 
 
     //Deinterlace if codec said format was interlaced or if we have selected we want to deinterlace
     //this video
-    EDEINTERLACEMODE mDeintMode = g_settings.m_currentVideoSettings.m_DeinterlaceMode;
-    EINTERLACEMETHOD mInt = g_settings.m_currentVideoSettings.m_InterlaceMethod;
-    unsigned int mFilters = m_pVideoCodec->GetFilters();
     if ((mDeintMode == VS_DEINTERLACEMODE_AUTO && (picture.iFlags & DVP_FLAG_INTERLACED)) || mDeintMode == VS_DEINTERLACEMODE_FORCE)
     {
-      if(!(mFilters & CDVDVideoCodec::FILTER_DEINTERLACE_ANY))
+      if(mInt == VS_INTERLACEMETHOD_SW_BLEND)
       {
-        if((mInt == VS_INTERLACEMETHOD_DEINTERLACE)
-        || (mInt == VS_INTERLACEMETHOD_AUTO && !g_renderManager.Supports(VS_INTERLACEMETHOD_RENDER_BOB)
-                                            && !g_renderManager.Supports(VS_INTERLACEMETHOD_DXVA_ANY)))
-        {
-          if (!sPostProcessType.empty())
-            sPostProcessType += ",";
-          sPostProcessType += g_advancedSettings.m_videoPPFFmpegDeint;
-        }
+        if (!sPostProcessType.empty())
+          sPostProcessType += ",";
+        sPostProcessType += g_advancedSettings.m_videoPPFFmpegDeint;
+        bPostProcessDeint = true;
       }
     }
 
@@ -279,7 +276,7 @@ bool CDVDPlayerVideoOutput::GetPicture(ToOutputMessage toMsg, FromOutputMessage 
 
     if (!sPostProcessType.empty())
     {
-      mPostProcess.SetType(sPostProcessType);
+      mPostProcess.SetType(sPostProcessType, bPostProcessDeint);
       if (mPostProcess.Process(&m_picture))
         mPostProcess.GetPicture(&m_picture);
     }
@@ -396,6 +393,8 @@ bool CDVDPlayerVideoOutput::RefreshGlxContext()
 
 bool CDVDPlayerVideoOutput::DestroyGlxContext()
 {
+  g_renderManager.ReleaseProcessor();
+
   Display *dpy = g_Windowing.GetDisplay();
   if (m_glContext)
   {

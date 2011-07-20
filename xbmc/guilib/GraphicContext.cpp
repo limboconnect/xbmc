@@ -53,7 +53,7 @@ CGraphicContext::CGraphicContext(void) :
   m_Resolution(RES_INVALID), 
   /*m_windowResolution,*/
   m_guiScaleX(1.0f), 
-  m_guiScaleY(1.0f) 
+  m_guiScaleY(1.0f)
   /*,m_cameras, */ 
   /*m_origins, */
   /*m_clipRegions,*/
@@ -340,7 +340,7 @@ void CGraphicContext::SetVideoResolution(RESOLUTION res, bool forceUpdate)
   {
     //pause the player during the refreshrate change
     int delay = g_guiSettings.GetInt("videoplayer.pauseafterrefreshchange");
-    if (delay > 0 && g_guiSettings.GetBool("videoplayer.adjustrefreshrate") && g_application.IsPlayingVideo() && !g_application.IsPaused())
+    if (delay > 0 && g_guiSettings.GetBool("videoplayer.adjustrefreshrate") && g_application.IsPlayingVideo())
     {
       g_application.m_pPlayer->Pause();
       ThreadMessage msg = {TMSG_MEDIA_UNPAUSE};

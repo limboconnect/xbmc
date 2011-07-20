@@ -176,6 +176,7 @@ public:
   virtual CStdString GetPlayingTitle() { return ""; };
 
   virtual bool SwitchChannel(const PVR::CPVRChannel &channel) { return false; }
+
 protected:
   IPlayerCallback& m_callback;
 };
