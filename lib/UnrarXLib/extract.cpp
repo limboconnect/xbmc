@@ -2,7 +2,6 @@
 #include "Util.h"
 #ifdef _LINUX
 #include "XSyncUtils.h"
-#include "XEventUtils.h"
 #endif
 
 // a cautious wrapper around strncpy
