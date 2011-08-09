@@ -104,7 +104,7 @@ CXBMCRenderManager::CXBMCRenderManager()
   m_presentmethod = PRESENT_METHOD_SINGLE;
   m_bReconfigured = false;
   m_hasCaptures = false;
-  m_pClock = 0;
+//  m_pClock = 0;
 }
 
 CXBMCRenderManager::~CXBMCRenderManager()
@@ -253,7 +253,7 @@ bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsi
     m_bReconfigured = true;
     m_presentstep = PRESENT_IDLE;
     m_presentevent.Set();
-    m_pClock = 0;
+//    m_pClock = 0;
     m_bDrain = false;
   }
 
@@ -752,7 +752,8 @@ void CXBMCRenderManager::UpdateResolution()
 }
 
 
-int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double presenttime, EFIELDSYNC sync, CDVDClock *clock, bool &late)
+//int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double presenttime, EFIELDSYNC sync, CDVDClock *clock, bool &late)
+int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double pts, double presenttime, EFIELDSYNC sync, int playspeed)
 {
   CSharedLock lock(m_sharedSection);
   if (!m_pRenderer)
@@ -760,7 +761,6 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double
 
   if(m_pRenderer->AddVideoPicture(&pic))
     return 1;
-  m_pClock = clock;
 
   YV12Image image;
   source = m_pRenderer->GetNextBufferIndex();
@@ -813,6 +813,8 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double
 
   // set pts and sync
   *image.pPresenttime = presenttime;
+  *image.pPts = pts;
+  *image.pPlaySpeed = playspeed;
   *image.pSync = sync;
 
   // upload texture
@@ -824,8 +826,8 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double
   g_application.NewFrame();
 
   // signal lateness to player
-  late = m_late ? true : false;
-  m_late = false;
+//  late = m_late ? true : false;
+//  m_late = false;
 
   return index;
 }
@@ -865,7 +867,8 @@ void CXBMCRenderManager::NotifyFlip()
 
 void CXBMCRenderManager::CheckNextBuffer()
 {
-  if(!m_pRenderer || !m_pClock) return;
+//  if(!m_pRenderer || !m_pClock) return;
+  if(!m_pRenderer) return;
 
   YV12Image image;
   int source = m_pRenderer->GetCurrentBufferIndex();
@@ -875,15 +878,15 @@ void CXBMCRenderManager::CheckNextBuffer()
   int index = m_pRenderer->GetImage(&image, source);
 
   // calculate render time
-  double iPlayingClock, iCurrentClock, iSleepTime, iPresentTime;
-  iPlayingClock = m_pClock->GetClock(iCurrentClock, false);
-  iSleepTime = *image.pPresenttime - iPlayingClock;
-  iPresentTime = iCurrentClock + iSleepTime;
+//  double iPlayingClock, iCurrentClock, iSleepTime, iPresentTime;
+//  iPlayingClock = m_pClock->GetClock(iCurrentClock, false);
+//  iSleepTime = *image.pPresenttime - iPlayingClock;
+//  iPresentTime = iCurrentClock + iSleepTime;
 
-  if (iSleepTime <= 0)
-    m_late = true;
+//  if (iSleepTime <= 0)
+//    m_late = true;
 
-  double timestamp = iPresentTime/DVD_TIME_BASE;
+  double timestamp = *image.pPresenttime/DVD_TIME_BASE;
   if(timestamp - GetPresentTime() > MAXPRESENTDELAY)
     timestamp =  GetPresentTime() + MAXPRESENTDELAY;
 
