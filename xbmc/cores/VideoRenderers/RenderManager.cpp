@@ -650,10 +650,19 @@ void CXBMCRenderManager::Present()
 
     if(m_presentstep == PRESENT_FLIP)
     {
+      // overlays has to be flipped if picture flips
+      // in order to remove odl ones
       m_overlays.Flip();
+      m_requestOverlayFlip = false;
       m_pRenderer->FlipPage(m_presentsource);
       m_presentstep = PRESENT_FRAME;
       m_presentevent.Set();
+    }
+    // continue flipping overlays for still frames
+    else if (m_requestOverlayFlip)
+    {
+      m_overlays.Flip();
+      m_requestOverlayFlip = false;
     }
   }
 
@@ -826,8 +835,8 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, int source, double
 
   m_pRenderer->ReleaseImage(index, false);
 
-  // signal new frame to application
-  g_application.NewFrame();
+//  // signal new frame to application
+//  g_application.NewFrame();
 
   // signal lateness to player
 //  late = m_late ? true : false;
