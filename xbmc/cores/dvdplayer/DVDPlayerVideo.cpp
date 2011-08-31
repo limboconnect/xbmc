@@ -774,14 +774,14 @@ void CDVDPlayerVideo::Process()
               CLog::Log(LOGDEBUG,"%s - change configuration. %dx%d. framerate: %4.2f. format: %s",__FUNCTION__,
                                                                     m_output.width,
                                                                     m_output.height,
-                                                                    m_output.framerate,
+                                                                    m_bFpsInvalid ? 0.0 : m_output.framerate,
                                                                     m_formatstr.c_str());
               bool bResChange;
               if(!g_renderManager.Configure(m_output.width,
                                             m_output.height,
                                             m_output.dwidth,
                                             m_output.dheight,
-                                            m_output.framerate,
+                                            m_bFpsInvalid ? 0.0 : m_output.framerate,
                                             m_output.flags,
                                             bResChange))
               {
@@ -1663,8 +1663,8 @@ bool CDVDPlayerVideo::CheckRenderConfig(const DVDVideoPicture* src)
     m_output.width = pPicture->iWidth;
     m_output.height = pPicture->iHeight;
     m_output.dwidth = pPicture->iDisplayWidth;
-    m_output.dheight = pPicture->iDisplayHeight;
-    m_output.framerate = config_framerate;
+    m_output.dheight = pPicture->iDisplxbmc/cores/dvdplayer/DVDPlayer.cppayHeight;
+    m_output.framerate = m_fFrameRate;
     m_output.color_format = pPicture->format;
     m_output.extended_format = pPicture->extended_format;
     m_output.color_matrix = pPicture->color_matrix;
@@ -1680,8 +1680,12 @@ bool CDVDPlayerVideo::CheckRenderConfig(const DVDVideoPicture* src)
   return false;
 }
 
-int CDVDPlayerVideo::OutputPicture(DVDVideoPicture* pPicture, double pts)
+int CDVDPlayerVideo::OutputPicture(const DVDVideoPicture* src, double pts)
 {
+
+  /* picture buffer is not allowed to be modified in this call */
+  DVDVideoPicture picture(*src);
+  DVDVideoPicture* pPicture = &picture;
 
   double maxfps  = 60.0;
   int    result  = 0;
