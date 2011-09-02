@@ -41,7 +41,7 @@ namespace Shaders { class BaseYUV2RGBShader; }
 namespace Shaders { class BaseVideoFilterShader; }
 namespace VAAPI   { struct CHolder; }
 
-#define NUM_BUFFERS 3
+#define NUM_BUFFERS 4
 
 
 #undef ALIGN
@@ -135,10 +135,10 @@ public:
   virtual void         Reset(); /* resets renderer after seek for example */
   virtual void         Flush();
   virtual void         Upload(int source);
-  virtual void         NotifyFlip();
+  virtual void         NotifyDisplayFlip();
   virtual bool         HasFreeBuffer();
-  virtual int          GetNextFreeBufferIndex();
-  virtual int          GetCurrentBufferIndex();
+  virtual int          FlipFreeBuffer();
+  virtual int          GetNextRenderBufferIndex();
   virtual void         ReleaseProcessor();
   virtual void         LogBuffers();
 
@@ -167,7 +167,6 @@ protected:
 
   bool ValidateRenderer();
   virtual void ManageTextures();
-  int  NextYV12Texture();
   virtual bool ValidateRenderTarget();
   virtual void LoadShaders(int field=FIELD_FULL);
   void SetTextureFilter(GLenum method);
@@ -219,10 +218,11 @@ protected:
 
   CFrameBufferObject m_fbo;
 
-  int m_iYV12RenderBuffer;
-  int m_NumYV12Buffers;
+  int m_iCurrentRenderBuffer;
+  int m_NumRenderBuffers;
   int m_iLastRenderBuffer;
-  int m_iNextRenderBuffer;
+  int m_iLastDisplayedRenderBuffer;
+  int m_iOutputRenderBuffer;
   int m_iDisplayedRenderBuffer;
 
   bool m_bConfigured;
