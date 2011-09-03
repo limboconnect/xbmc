@@ -1233,7 +1233,6 @@ CLog::Log(LOGDEBUG, "ASB: CXBMCRenderManager::CheckNextBuffer begin m_renderinfo
   m_renderinfo.frameId = *image.pId; //from image
   m_renderinfo.frameplayspeed = *image.pPlaySpeed; //from image
   m_renderinfo.framedur = *image.pFrameDur/DVD_TIME_BASE; //from image
-CLog::Log(LOGDEBUG, "ASB: CXBMCRenderManager::CheckNextBuffer m_renderinfo.framepts: %f m_renderinfo.frameplayspeed: %i m_renderinfo.frameId: %i now: %"PRId64"", m_renderinfo.framepts, m_renderinfo.frameplayspeed, m_renderinfo.frameId, CurrentHostCounter());
   m_vclockresync = *image.pVClockResync;
 
 //TODO: should we not do the below flip request step in even if late in non-fullscreen mode?
@@ -1283,7 +1282,6 @@ CLog::Log(LOGDEBUG, "ASB: CXBMCRenderManager::CheckNextBuffer m_renderinfo.frame
       }
     }
   }
-
   m_pRenderer->ReleaseImage(index, false);
 }
 
