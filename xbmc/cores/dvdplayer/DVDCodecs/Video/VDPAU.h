@@ -85,6 +85,8 @@ public:
   virtual void Close();
   virtual bool AllowFrameDropping();
   virtual void SetDropState(bool bDrop);
+  virtual bool QueueIsFull(bool wait = false);
+
   virtual int  Check(AVCodecContext* avctx);
   virtual const std::string Name() { return "vdpau"; }
 
@@ -143,7 +145,6 @@ public:
   EINTERLACEMETHOD GetDeinterlacingMethod(bool log = false);
   void SetHWUpscaling();
   bool DiscardPresentPicture();
-  bool QueueIsFull();
 
   pictureAge picAge;
   vdpau_render_state *past[2], *current, *future[2];
@@ -307,6 +308,7 @@ protected:
   CCriticalSection m_mixerSec, m_outPicSec, m_videoSurfaceSec, m_flipSec;
   CEvent m_picSignal;
   CEvent m_msgSignal;
+  CEvent m_queueSignal;
   bool m_bVdpauDeinterlacing;
   bool m_binterlacedFrame;
   int m_outPicsNum;

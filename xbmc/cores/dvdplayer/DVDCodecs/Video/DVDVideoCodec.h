@@ -24,6 +24,7 @@
 #include "system.h"
 
 #include <vector>
+#include "threads/Event.h"
 
 // when modifying these structures, make sure you update all codecs accordingly
 #define FRAME_TYPE_UNDEF 0
@@ -268,9 +269,16 @@ public:
     return 0;
   }
 
-  virtual bool WaitGetPicture()
+  virtual bool WaitForFreeBuffer()
   {
+    m_bufferEvent.Reset();
+    m_bufferEvent.Wait();
     return true;
+  }
+
+  virtual void SignalBufferChange()
+  {
+    m_bufferEvent.Set();
   }
 
   virtual void SetGroupId(int iGroup) {m_iGroupId = iGroup;};
@@ -281,4 +289,5 @@ protected:
   int    m_iGroupId;
   float  m_fForcedAspectRatio;
   unsigned int  m_filters;
+  CEvent m_bufferEvent;
 };
