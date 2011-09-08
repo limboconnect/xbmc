@@ -1613,6 +1613,8 @@ bool CDVDPlayerVideo::CheckRenderConfig(const DVDVideoPicture* src)
   DVDVideoPicture picture(*src);
   DVDVideoPicture* pPicture = &picture;
 
+  double framerate = GetFrameRate();
+
   CSingleLock lock(m_outputSection);
 
 #ifdef HAS_VIDEO_PLAYBACK
