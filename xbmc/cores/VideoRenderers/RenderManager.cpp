@@ -290,8 +290,6 @@ bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsi
     return false;
   }
 
-  RESOLUTION res = GetResolution();
-
   bool result = m_pRenderer->Configure(width, height, d_width, d_height, fps, flags, format);
   if(result)
   {
@@ -1286,4 +1284,14 @@ bool CXBMCRenderManager::Drain()
 
   g_application.NewFrame();
   return false;
+}
+
+bool CXBMCRenderManager::CheckResolutionChange(float fps)
+{
+  if(!m_pRenderer)
+  {
+    CLog::Log(LOGERROR, "%s called without a valid Renderer object", __FUNCTION__);
+    return false;
+  }
+  return m_pRenderer->CheckResolutionChange(fps);
 }

@@ -98,6 +98,7 @@ public:
   void BindPixmap(int flipBufferIdx);
   int PreBindAllPixmaps();
   bool IsBufferValid(int flipBufferIdx);
+  void GLFinish();
 
   PFNGLXBINDTEXIMAGEEXTPROC    glXBindTexImageEXT;
   PFNGLXRELEASETEXIMAGEEXTPROC glXReleaseTexImageEXT;
@@ -261,7 +262,6 @@ protected:
   virtual void OnExit();
   virtual void Process();
   void FlushMixer();
-  void GLFinish();
 //  int NextBuffer();
 
   struct MixerMessage

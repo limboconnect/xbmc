@@ -86,6 +86,7 @@ public:
   void UnInit();
   bool Flush();
   bool Drain();
+  bool CheckResolutionChange(float fps);
 
   void AddOverlay(CDVDOverlay* o, double pts)
   {
