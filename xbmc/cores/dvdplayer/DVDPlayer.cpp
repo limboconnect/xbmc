@@ -1540,6 +1540,7 @@ void CDVDPlayer::HandlePlaySpeed()
     else
     {
       /* ensure that automatically started players are stopped while caching */
+      m_clock.SetSpeed(DVD_PLAYSPEED_PAUSE); //ASB: added as surely we also need to pause the clock
       if (m_CurrentAudio.started)
         m_dvdPlayerAudio.SetSpeed(DVD_PLAYSPEED_PAUSE);
       if (m_CurrentVideo.started)
@@ -1715,7 +1716,8 @@ bool CDVDPlayer::CheckPlayerInit(CCurrentStream& current, unsigned int source)
     }
 
     double clockoffset; //set clock earlier than dts to allow for delay in decoding/processing through to display
-    clockoffset = DVD_MSEC_TO_TIME(500);
+    //clockoffset = DVD_MSEC_TO_TIME(500);
+    clockoffset = 0.0;
     //TODO: factor in rendermanager displaydelay function + 50ms (for example) rather than fixed values
     SendPlayerMessage(new CDVDMsgGeneralResync(current.dts - clockoffset, setclock), source);
   }
@@ -2260,9 +2262,7 @@ void CDVDPlayer::HandleMessages()
         // 2. skip frames and adjust their pts or the clock
         m_playSpeed = speed;
         m_caching = CACHESTATE_DONE;
-        // Let the video player pause the clock (fix this up properly later)
-        if (speed != DVD_PLAYSPEED_PAUSE)
-           m_clock.SetSpeed(speed);
+        m_clock.SetSpeed(speed);
         m_dvdPlayerAudio.SetSpeed(speed);
         m_dvdPlayerVideo.SetSpeed(speed);
 
@@ -2403,6 +2403,7 @@ void CDVDPlayer::SetCaching(ECacheState state)
 void CDVDPlayer::SetPlaySpeed(int speed)
 {
   m_messenger.Put(new CDVDMsgInt(CDVDMsg::PLAYER_SETSPEED, speed));
+  m_clock.SetSpeed(speed); //ASB added: surely we need to set the clock speed too
   m_dvdPlayerAudio.SetSpeed(speed);
   m_dvdPlayerVideo.SetSpeed(speed);
   SynchronizeDemuxer(100);
@@ -3228,7 +3229,7 @@ void CDVDPlayer::FlushBuffers(bool queued, double pts, bool accurate)
       m_CurrentTeletext.started = false;
     }
 
-    if(pts != DVD_NOPTS_VALUE)
+    //if(pts != DVD_NOPTS_VALUE && m_CurrentVideo.id < 0)
       m_clock.Discontinuity(pts);
     UpdatePlayState(0);
   }
