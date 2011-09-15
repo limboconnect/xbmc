@@ -221,7 +221,6 @@ public:
 
   VdpDecoder    decoder;
   VdpVideoMixer videoMixer;
-  VdpRect       outRect;
   VdpRect       outRectVid;
 
   static void*    dl_handle;
