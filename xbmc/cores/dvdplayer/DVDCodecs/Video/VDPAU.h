@@ -142,6 +142,7 @@ public:
   void SetSharpness();
   void SetDeintSkipChroma();
   void SetDeinterlacing();
+  void DisableHQScaling();
   void PostProcOff();
   EINTERLACEMETHOD GetDeinterlacingMethod(bool log = false);
   void SetHWUpscaling();
@@ -150,11 +151,12 @@ public:
   pictureAge picAge;
   vdpau_render_state *past[2], *current, *future[2];
   int        tmpDeintMode, tmpDeint;
+  int        tmpUpScale;
   bool       tmpPostProc;
   float      tmpNoiseReduction, tmpSharpness;
   float      tmpBrightness, tmpContrast;
   int        OutWidth, OutHeight;
-  bool       upScale;
+  int        upScale;
   bool m_preBindPixmapsDone;
 
   VdpProcamp    m_Procamp;
