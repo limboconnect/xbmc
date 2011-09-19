@@ -1534,6 +1534,7 @@ bool CVDPAU::FiniOutputMethod()
   presentSurface = VDP_INVALID_HANDLE;
 
 
+  // delete black bar
   if (m_BlackBar)
   {
     delete [] m_BlackBar;
