@@ -137,6 +137,7 @@ public:
   bool IsSurfaceValid(vdpau_render_state *render);
 
   void CheckFeatures();
+  void SetPostProcFeatures(bool postProcEnabled = true);
   void SetColor();
   void SetNoiseReduction();
   void SetSharpness();
