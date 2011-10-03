@@ -240,6 +240,8 @@ protected:
   int m_iFlipRequestRenderBuffer;
   int m_iOutputRenderBuffer;
   int m_iDisplayedRenderBuffer;
+  bool m_bAllRenderBuffersDisplayed;
+  bool m_bAllRenderBuffersOutput;
 
   bool m_bConfigured;
   bool m_bValidated;
