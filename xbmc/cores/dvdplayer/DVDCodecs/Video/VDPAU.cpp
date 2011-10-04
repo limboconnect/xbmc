@@ -438,7 +438,7 @@ int CVDPAU::PreBindAllPixmaps()
   //if (glGet(GL_TEXTURE_RECTANGLE_ARB))
   //   textureTarget = GL_TEXTURE_RECTANGLE_ARB;
 
-  glEnable(textureTarget); 
+  glEnable(textureTarget);
   OutputPicture *outPic;
   for (int i = 0; i < NUM_OUTPUT_PICS; i++)
   {
@@ -1889,8 +1889,7 @@ int CVDPAU::FFGetBuffer(AVCodecContext *avctx, AVFrame *pic)
   }
   pic->type= FF_BUFFER_TYPE_USER;
 
-  { CSingleLock lock(vdp->m_videoSurfaceSec);
-    render->state |= FF_VDPAU_STATE_USED_FOR_REFERENCE; }
+  render->state |= FF_VDPAU_STATE_USED_FOR_REFERENCE;
   pic->reordered_opaque= avctx->reordered_opaque;
   return 0;
 }
@@ -2007,7 +2006,7 @@ bool CVDPAU::QueueIsFull(bool wait /* = false */)
   if (m_vdpauOutputMethod == OUTPUT_GL_INTEROP_YUV)
   {
     CSingleLock locku(m_outPicSec);
-    if (!m_freeOutPic.empty() && (m_freeOutPic.size() < MAX_PIC_Q_LENGTH))
+    if (!m_freeOutPic.empty())
       return false; // buffers are not full
   }
   else
@@ -2887,7 +2886,7 @@ void CVDPAU::Process()
           m_freeOutPic.pop_front();
           outPic->render = NULL;
           outPic->reported = false;
-          m_usedOutPic.push_back(outPic);
+//          m_usedOutPic.push_back(outPic);
           outPicLock.Leave();
           break;
         }
@@ -3011,11 +3010,11 @@ void CVDPAU::Process()
         }
       }
 
-      //// put pic in used out queue
-      //outPicLock.Enter();
-      //outPic->reported = false;
-      //m_usedOutPic.push_back(outPic);
-      //outPicLock.Leave();
+      // put pic in used out queue
+      outPicLock.Enter();
+      outPic->reported = false;
+      m_usedOutPic.push_back(outPic);
+      outPicLock.Leave();
 
       //tell other threads there is (or may be for pixmap) a picture ready
       m_picSignal.Set();
