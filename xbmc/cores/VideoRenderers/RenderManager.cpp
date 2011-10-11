@@ -719,7 +719,7 @@ void CXBMCRenderManager::Render(bool clear, DWORD flags, DWORD alpha)
   m_overlays.Render();
 }
 
-void CXBMCRenderManager::Present()
+void CXBMCRenderManager::Present(int &frameCount)
 {
   { CRetakeLock<CExclusiveLock> lock(m_sharedSection);
     if (!m_pRenderer)
@@ -746,6 +746,8 @@ void CXBMCRenderManager::Present()
 
   Render(true, 0, 255);
 
+  frameCount = m_pRenderer->FramesInBuffers();
+
   UpdatePostRenderClock();
 
   /* wait for this present to be valid */
@@ -753,6 +755,7 @@ void CXBMCRenderManager::Present()
     WaitPresentTime(m_presenttime);
   UpdatePreFlipClock();
 
+  frameCount = m_pRenderer->FramesInBuffers();
 //  m_presentevent.Set();
 }
 
