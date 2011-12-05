@@ -1591,7 +1591,6 @@ bool CVideoReferenceClock::UpdateRefreshrate(bool Forced /*= false*/)
     return false;
   else if (!Forced)
   {
-    NotifyRefreshChanged();
     m_RefreshChanged = 0; //if we got an event and not forced then assume we can reset refresh rate change wait state
   }
 

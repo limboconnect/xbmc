@@ -45,6 +45,7 @@ namespace DXVA { class CProcessor; }
 namespace VAAPI { class CSurfaceHolder; }
 class CVDPAU;
 struct DVDVideoPicture;
+class IDVDPlayerVideoOutput;
 
 #define ERRORBUFFSIZE 30
 #define NUM_DISPLAYINFOBUF 4
@@ -88,7 +89,7 @@ public:
   bool Flush();
   bool Drain();
   bool WaitDrained(int timeout = 100);
-  bool CheckResolutionChange(float fps);
+  void RegisterVideoOutput (IDVDPlayerVideoOutput *videoOutput);
 
   void AddOverlay(CDVDOverlay* o, double pts)
   {
@@ -278,10 +279,11 @@ protected:
   CEvent     m_presentevent;
   CEvent     m_flushEvent;
   CEvent     m_flipEvent;
-//  CDVDClock  *m_pClock;
-//  bool       m_late;
   bool       m_bDrain;
   bool       m_requestOverlayFlip;
+  IDVDPlayerVideoOutput *m_videoOutput;
+  CCriticalSection       m_videoOutCritSect;
+  volatile bool m_flushing;
 
   OVERLAY::CRenderer m_overlays;
 

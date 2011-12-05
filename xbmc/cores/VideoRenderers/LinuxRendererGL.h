@@ -32,6 +32,7 @@
 #include "BaseRenderer.h"
 
 #include "threads/Event.h"
+#include "threads/CriticalSection.h"
 
 class CRenderCapture;
 
@@ -134,6 +135,7 @@ public:
   virtual void         UnInit();
   virtual void         Reset(); /* resets renderer after seek for example */
   virtual void         Flush();
+  virtual unsigned int GetProcessorSize();
   virtual void         Upload(int source);
   virtual void         NotifyDisplayFlip();
   virtual bool         HasFreeBuffer();
@@ -241,8 +243,7 @@ protected:
   int m_iFlipRequestRenderBuffer;
   int m_iOutputRenderBuffer;
   int m_iDisplayedRenderBuffer;
-  bool m_bAllRenderBuffersDisplayed;
-  bool m_bAllRenderBuffersOutput;
+  CCriticalSection m_BufferCounterSection;
 
   bool m_bConfigured;
   bool m_bValidated;

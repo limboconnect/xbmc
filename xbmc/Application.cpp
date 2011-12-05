@@ -2172,7 +2172,7 @@ void CApplication::Render()
   if (flip)
   {
     g_graphicsContext.Flip(dirtyRegions);
-    g_renderManager.NotifyFlip();
+    g_renderManager.NotifyDisplayFlip();
   }
   CTimeUtils::UpdateFrameTime(flip);
 

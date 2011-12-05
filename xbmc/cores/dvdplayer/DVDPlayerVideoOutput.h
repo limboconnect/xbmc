@@ -32,6 +32,7 @@
 #include "settings/VideoSettings.h"
 #include <GL/glx.h>
 #include "DVDPlayerVideoOutputProtocol.h"
+#include "IDVDPlayerVideoOutput.h"
 
 struct ToOutputMessage
 {
@@ -57,12 +58,13 @@ struct FromOutputMessage
   int iResult;
 };
 
-class CDVDPlayerVideoOutput : public CThread
+class CDVDPlayerVideoOutput : private CThread, public IDVDPlayerVideoOutput
 {
 public:
   CDVDPlayerVideoOutput(CDVDPlayerVideo *videoplayer, CDVDClock* pClock);
   virtual ~CDVDPlayerVideoOutput();
 
+  void Flush();
   void Start();
   void Reset();
   void ReleaseCodec();
@@ -79,7 +81,6 @@ protected:
   void OnExit();
   void Process();
   bool GetPicture(double& pts, double& frametime, bool drop = false);
-  void SendPlayerMessage(ControlProtocol::InSignal signal, void *data = NULL, int size = 0);
   bool RefreshGlxContext();
   bool DestroyGlxContext();
   bool ResyncClockToVideo(double pts, int playerSpeed, bool bFlushed = false);

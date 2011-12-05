@@ -40,15 +40,8 @@
 #include "threads/Thread.h"
 namespace Surface { class CSurface; }
 
-#define NUM_RENDERBUF_PICS                 4 // ensure aligned with renderer buffer number
 #define NUM_OUTPUT_PICS                    11 // max length of picture queue from migration to output surface (from video surface) through to the buffer being copied to back buffer, must be at least one more than NUM_RENDERBUF_PICS
-//#define NUM_OUTPUT_SURFACES                9
 #define NUM_OUTPUT_SURFACES                11 // number of allocated output surfaces, actual number used for non-pixmap should ideally match NUM_OUTPUT_PICS, and for pixmap should ideally be NUM_OUTPUT_PICS - NUM_RENDER_BUFPICS
-
-//#define NUM_VIDEO_SURFACES_MPEG2           10  // (1 frame being decoded, 2 reference)
-//#define NUM_VIDEO_SURFACES_H264            32 // (1 frame being decoded, up to 16 references)
-//#define NUM_VIDEO_SURFACES_VC1             10  // (same as MPEG-2)
-//#define NUM_OUTPUT_SURFACES_FOR_FULLHD     9
 #define FULLHD_WIDTH                       1920
 #define MAX_PIC_Q_LENGTH                   20 //for non-interop_yuv this controls the max length of the decoded pic to render completion Q
 
@@ -97,7 +90,6 @@ public:
   void ReleasePixmap(int flipBufferIdx);
   void BindPixmap(int flipBufferIdx);
   int PreBindAllPixmaps();
-  bool IsBufferValid(int flipBufferIdx);
   void GLFinish();
 
   PFNGLXBINDTEXIMAGEEXTPROC    glXBindTexImageEXT;
@@ -309,8 +301,9 @@ protected:
   std::deque<OutputPicture*> m_presentOutPic;
   std::deque<OutputPicture*> m_mixerOutPic;
   OutputPicture *m_presentPicture;
+  int m_numRenderBuffers;
   int m_mixerInputSize; // mixerInput queue size to be protected by m_mixerSec log
-  OutputPicture *m_flipBuffer[NUM_RENDERBUF_PICS];
+  OutputPicture **m_flipBuffer;
   unsigned int m_mixerCmd;
   CCriticalSection m_mixerSec, m_outPicSec, m_videoSurfaceSec, m_flipSec;
   CEvent m_picSignal;

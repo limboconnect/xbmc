@@ -87,7 +87,6 @@ public:
   virtual const char* GetName() { return m_name.c_str(); }; // m_name is never changed after open
   virtual unsigned GetConvergeCount();
   virtual bool WaitForFreeBuffer();
-  virtual bool HwFreeResources(bool test = false);
 
   bool               IsHardwareAllowed()                     { return !m_bSoftware; }
   IHardwareDecoder * GetHardware()                           { return m_pHardware; };

@@ -144,8 +144,8 @@ CLinuxRendererGL::CLinuxRendererGL()
   m_iCurrentRenderBuffer = 0;
   m_iOutputRenderBuffer = 0;
   m_iDisplayedRenderBuffer = 0;
-  m_bAllRenderBuffersDisplayed = true;
-  m_bAllRenderBuffersOutput = false;
+//  m_bAllRenderBuffersDisplayed = true;
+//  m_bAllRenderBuffersOutput = false;
   m_NumRenderBuffers = NUM_BUFFERS;
   m_flipindex = 0;
   m_currentField = FIELD_FULL;
@@ -261,9 +261,9 @@ bool CLinuxRendererGL::ValidateRenderTarget()
     m_iFlipRequestRenderBuffer = -1;
     m_iCurrentRenderBuffer = 0;
     m_iOutputRenderBuffer = 0;
-    m_iDisplayedRenderBuffer = 0;
-    m_bAllRenderBuffersDisplayed = true;
-    m_bAllRenderBuffersOutput = false;
+    m_iDisplayedRenderBuffer = m_NumRenderBuffers;
+//    m_bAllRenderBuffersDisplayed = true;
+//    m_bAllRenderBuffersOutput = false;
 
     m_bValidated = true;
     return true;
@@ -315,11 +315,11 @@ bool CLinuxRendererGL::Configure(unsigned int width, unsigned int height, unsign
   for (int i = 0 ; i<m_NumRenderBuffers ; i++)
     m_buffers[i].image.flags = 0;
 
-  m_iLastRenderBuffer = -1;
-  m_iFlipRequestRenderBuffer = -1;
-  m_iCurrentRenderBuffer = 0;
-  m_iOutputRenderBuffer = 0;
-  m_iDisplayedRenderBuffer = 0;
+//  m_iLastRenderBuffer = -1;
+//  m_iFlipRequestRenderBuffer = -1;
+//  m_iCurrentRenderBuffer = 0;
+//  m_iOutputRenderBuffer = 0;
+//  m_iDisplayedRenderBuffer = 0;
 
   m_nonLinStretch    = false;
   m_nonLinStretchGui = false;
@@ -329,11 +329,6 @@ bool CLinuxRendererGL::Configure(unsigned int width, unsigned int height, unsign
 
   return true;
 }
-
-//int CLinuxRendererGL::GetNextRenderBuffer()
-//{
-//  return (m_iCurrentRenderBuffer + 1) % m_NumRenderBuffers;
-//}
 
 int CLinuxRendererGL::GetImage(YV12Image *image, int source, bool readonly)
 {
@@ -626,11 +621,16 @@ void CLinuxRendererGL::Flush()
 
   glFinish();
 
-  for (int i = 0 ; i < m_NumYV12Buffers ; i++)
+  for (int i = 0 ; i < m_NumRenderBuffers ; ++i)
     (this->*m_textureDelete)(i);
 
   glFinish();
   m_bValidated = false;
+}
+
+unsigned int CLinuxRendererGL::GetProcessorSize()
+{
+  return m_NumRenderBuffers;
 }
 
 void CLinuxRendererGL::Update(bool bPauseDrawing)
@@ -784,6 +784,8 @@ void CLinuxRendererGL::DrawBlackBars()
 void CLinuxRendererGL::FlipPage(int source)
 {
   // See "Render Buffer State Description" in header for information.
+  CSingleLock lock(m_BufferCounterSection);
+
   int curr = m_iCurrentRenderBuffer;
   if( source >= 0 && source < m_NumRenderBuffers )
     m_iCurrentRenderBuffer = source;
@@ -791,11 +793,11 @@ void CLinuxRendererGL::FlipPage(int source)
     m_iCurrentRenderBuffer = GetNextRenderBufferIndex();
 
   // if return -1 then flip could not happen as buffer not yet filled so we revert (caller should check possible before calling)
-  if (m_iCurrentRenderBuffer == -1)
-     m_iCurrentRenderBuffer = curr;
-
-  if (m_iCurrentRenderBuffer != curr)
-    m_bAllRenderBuffersOutput = false;
+//  if (m_iCurrentRenderBuffer == -1)
+//     m_iCurrentRenderBuffer = curr;
+//
+//  if (m_iCurrentRenderBuffer != curr)
+//    m_bAllRenderBuffersOutput = false;
 
   m_buffers[m_iCurrentRenderBuffer].flipindex = ++m_flipindex;
 
@@ -807,29 +809,42 @@ void CLinuxRendererGL::NotifyDisplayFlip()
   if (!m_bValidated)
     return;
 
-  // Flip 'displayed' render buffer index to signify that this buffer can now be considered free to re-use
-  // we can assume that buffer prior to the current render buffer is safe to re-use.
-  // If we get notified a second time and render buffer has not moved then we can also assume the render buffer itself
-  // is now to safe to re-use.
-  // See "Render Buffer State Description" in header for information.
+static int counter = 0;
+static int lastCount = 0;
+static int lastDisp = 0;
+
+  CSingleLock lock(m_BufferCounterSection);
+
   int last = m_iDisplayedRenderBuffer;
   if (m_iFlipRequestRenderBuffer == m_iCurrentRenderBuffer)
     m_iDisplayedRenderBuffer = m_iCurrentRenderBuffer;
   else
     m_iDisplayedRenderBuffer = (m_iCurrentRenderBuffer + m_NumRenderBuffers - 1) % m_NumRenderBuffers;
+
   m_iFlipRequestRenderBuffer = m_iCurrentRenderBuffer;
 
-  if (last != m_iDisplayedRenderBuffer)
+  if (last != m_iDisplayedRenderBuffer &&
+      m_iDisplayedRenderBuffer != m_iCurrentRenderBuffer)
   {
-    if (m_iDisplayedRenderBuffer == m_iOutputRenderBuffer) // we have caught up with output so all buffers are re-usable
-      m_bAllRenderBuffersDisplayed = true;
 #ifdef HAVE_LIBVDPAU
-  CVDPAU   *vdpau = m_buffers[m_iDisplayedRenderBuffer].vdpau;
-  if (vdpau)
-    if (!vdpau->DiscardPicture(m_iDisplayedRenderBuffer))
-      CLog::Log(LOGERROR,"CLinuxRendererGL::NotifyDisplayFlip failed to discard displayed render buffer picture: %i", m_iDisplayedRenderBuffer);
+      CVDPAU   *vdpau = m_buffers[m_iDisplayedRenderBuffer].vdpau;
+      if (vdpau)
+      {
+        if (!vdpau->DiscardPicture(m_iDisplayedRenderBuffer))
+        {
+          CLog::Log(LOGERROR,"CLinuxRendererGL::NotifyDisplayFlip failed to discard displayed render buffer picture: %i", m_iDisplayedRenderBuffer);
+          LogBuffers();
+          CLog::Log(LOGNOTICE,"------------ count: %d, last: %d, lastDisp: %d", counter, lastCount, lastDisp);
+        }
+        else
+        {
+          lastCount = counter;
+          lastDisp = m_iDisplayedRenderBuffer;
+        }
+      }
 #endif
   }
+  counter++;
 }
 
 bool CLinuxRendererGL::HasFreeBuffer()
@@ -843,7 +858,12 @@ bool CLinuxRendererGL::HasFreeBuffer()
   // in which case all 3 values will be the same and thus all buffers are free
   // See "Render Buffer State Description" in header for information.
 
-  if (m_iOutputRenderBuffer == m_iDisplayedRenderBuffer && !m_bAllRenderBuffersDisplayed)
+  CSingleLock lock(m_BufferCounterSection);
+
+  int outputPlus1 = (m_iOutputRenderBuffer + 1) % m_NumRenderBuffers;
+  if ((m_iOutputRenderBuffer == m_iDisplayedRenderBuffer
+      && m_iOutputRenderBuffer != m_iCurrentRenderBuffer)
+      || outputPlus1 == m_iCurrentRenderBuffer)
     return false;
   else
     return true;
@@ -862,13 +882,11 @@ int CLinuxRendererGL::FlipFreeBuffer()
   if (!m_bValidated)
     return -1;
 
+  CSingleLock lock(m_BufferCounterSection);
   // See "Render Buffer State Description" in header for information.
   if (HasFreeBuffer())
   {
-     m_bAllRenderBuffersDisplayed = false;
      m_iOutputRenderBuffer = (m_iOutputRenderBuffer + 1) % m_NumRenderBuffers;
-     if (m_iOutputRenderBuffer == m_iCurrentRenderBuffer) //we have caught up with current render so all buffers are output only
-       m_bAllRenderBuffersOutput = true;
      return m_iOutputRenderBuffer;
   }
   else
@@ -879,17 +897,17 @@ int CLinuxRendererGL::GetNextRenderBufferIndex()
 {
   if (!m_bValidated)
     return -1;
-  // if output buffer index has not yet moved forward render buffer obviously can't 
-  // but we could have filled all buffers with output and not yet rendered
-  // See "Render Buffer State Description" in header for information.
-  if (m_iOutputRenderBuffer == m_iCurrentRenderBuffer && !m_bAllRenderBuffersOutput)
+
+  CSingleLock lock(m_BufferCounterSection);
+  if (m_iOutputRenderBuffer == m_iCurrentRenderBuffer)
     return -1;
   return (m_iCurrentRenderBuffer + 1) % m_NumRenderBuffers;
 }
 
 int CLinuxRendererGL::FramesInBuffers()
 {
-  return (m_iCurrentRenderBuffer - m_iDisplayedRenderBuffer + m_NumRenderBuffers) % m_NumRenderBuffers;
+  CSingleLock lock(m_BufferCounterSection);
+  return (m_iOutputRenderBuffer - m_iCurrentRenderBuffer + m_NumRenderBuffers) % m_NumRenderBuffers;
 }
 
 void CLinuxRendererGL::ReleaseProcessor()
@@ -929,8 +947,8 @@ unsigned int CLinuxRendererGL::PreInit()
   m_iCurrentRenderBuffer = 0;
   m_iOutputRenderBuffer = 0;
   m_iDisplayedRenderBuffer = 0;
-  m_bAllRenderBuffersDisplayed = true;
-  m_bAllRenderBuffersOutput = false;
+//  m_bAllRenderBuffersDisplayed = true;
+//  m_bAllRenderBuffersOutput = false;
   m_NumRenderBuffers = NUM_BUFFERS;
 
   // setup the background colour
@@ -1284,16 +1302,6 @@ void CLinuxRendererGL::UnInit()
 
 void CLinuxRendererGL::Render(DWORD flags, int renderBuffer)
 {
-#ifdef HAVE_LIBVDPAU
-  CVDPAU   *vdpau = m_buffers[renderBuffer].vdpau;
-  if (vdpau)
-    if (!vdpau->IsBufferValid(renderBuffer))
-    {
-      m_eventTexturesDone[renderBuffer]->Set();
-      return;
-    }
-#endif
-
   // obtain current field, if interlaced
   if( flags & RENDER_FLAG_TOP)
     m_currentField = FIELD_TOP;
@@ -3479,7 +3487,7 @@ EINTERLACEMETHOD CLinuxRendererGL::AutoInterlaceMethod()
   if(m_renderMethod & RENDER_VDPAU)
   {
 #ifdef HAVE_LIBVDPAU
-    CVDPAU *vdpau = m_buffers[m_iYV12RenderBuffer].vdpau;
+    CVDPAU *vdpau = m_buffers[m_iCurrentRenderBuffer].vdpau;
     if(vdpau)
       return vdpau->AutoInterlaceMethod();
 #endif

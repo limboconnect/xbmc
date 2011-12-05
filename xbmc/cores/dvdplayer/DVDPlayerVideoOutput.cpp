@@ -47,12 +47,19 @@ CDVDPlayerVideoOutput::CDVDPlayerVideoOutput(CDVDPlayerVideo *videoplayer, CDVDC
 
 CDVDPlayerVideoOutput::~CDVDPlayerVideoOutput()
 {
+  g_renderManager.RegisterVideoOutput(NULL);
   Dispose();
+}
+
+void CDVDPlayerVideoOutput::Flush()
+{
+  SendControlMessage(ControlProtocol::UNCONFIGURE,0,0,true, 1000);
 }
 
 void CDVDPlayerVideoOutput::Start()
 {
   Create();
+  g_renderManager.RegisterVideoOutput(this);
 }
 
 void CDVDPlayerVideoOutput::Reset()
@@ -77,7 +84,9 @@ void CDVDPlayerVideoOutput::Unconfigure()
 
 bool CDVDPlayerVideoOutput::SendControlMessage(ControlProtocol::OutSignal signal, void *data /* = NULL */, int size /* = 0 */, bool sync /* = false */, int timeout /* = 0*/)
 {
-  CLog::Log(LOGNOTICE,"------- control msg: %d", signal);
+  if (m_bStop)
+    return false;
+
   if (sync)
   {
     Message *replyMsg;
@@ -213,12 +222,6 @@ double CDVDPlayerVideoOutput::GetPts()
 {
   CSingleLock lock(m_msgSection);
   return m_pts;
-}
-
-void CDVDPlayerVideoOutput::SendPlayerMessage(ControlProtocol::InSignal signal, void *data /* = NULL */, int size /* = 0 */)
-{
-  CLog::Log(LOGNOTICE,"------- send player msg: %d", signal);
-  m_controlPort.SendInMessage(signal, data, size);
 }
 
 bool CDVDPlayerVideoOutput::ResyncClockToVideo(double pts, int playerSpeed, bool bFlushed /* = false */)
@@ -374,6 +377,7 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           double *data;
           data = (double*)msg->data;
           m_extTimeout = *data;
+          return;
         default:
           break;
         }
@@ -412,11 +416,17 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           }
           m_bGotPicture = GetPicture(m_extPts, m_extFrametime);
           if (m_bGotPicture)
-            m_pVideoPlayer->CheckRenderConfig(&m_picture);
-          msg->Reply(DataProtocol::CONFIGURE);
-          m_state = TOP_CONFIGURING;
-          m_extTimeout = 5000;
-          CLog::Log(LOGNOTICE, "---------- send configure");
+          {
+            RefreshGlxContext();
+            m_state = TOP_CONFIGURED_CLOCKSYNC;
+            m_bStateMachineSelfTrigger = true;
+          }
+          else
+            m_extTimeout = 5000;
+
+//          m_state = TOP_CONFIGURING;
+//          m_extTimeout = 5000;
+//          m_controlPort.SendOutMessage(ControlProtocol::CONFIGURED);
           return;
         default:
           break;
@@ -489,18 +499,9 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
             m_extPlayerStarted = data->bPlayerStarted;
           }
 
-          bool bNeedReconfigure;
-          bNeedReconfigure = false;
           m_bGotPicture = GetPicture(m_extPts, m_extFrametime, m_extDrop);
+
           if (m_bGotPicture)
-            bNeedReconfigure = m_pVideoPlayer->CheckRenderConfig(&m_picture);
-          if (bNeedReconfigure)
-          {
-            msg->Reply(DataProtocol::CONFIGURE);
-            m_state = TOP_CONFIGURED_RECONFIGURING;
-            m_dataPort.DeferOut(true);
-          }
-          else if (m_bGotPicture)
           {
             m_state = TOP_CONFIGURED_CLOCKSYNC;
             m_bStateMachineSelfTrigger = true;
@@ -732,6 +733,7 @@ bool CDVDPlayerVideoOutput::GetPicture(double& pts, double& frametime, bool drop
   DVDVideoPicture picture;
   CDVDVideoPPFFmpeg mPostProcess("");
   CStdString sPostProcessType;
+  bool bPostProcessDeint(false);
 
   // try to retrieve the picture (should never fail!), unless there is a demuxer bug ofcours
   m_pVideoCodec->ClearPicture(&m_picture);
@@ -756,6 +758,10 @@ bool CDVDPlayerVideoOutput::GetPicture(double& pts, double& frametime, bool drop
 
     //Deinterlace if codec said format was interlaced or if we have selected we want to deinterlace
     //this video
+    EDEINTERLACEMODE mDeintMode = g_settings.m_currentVideoSettings.m_DeinterlaceMode;
+    EINTERLACEMETHOD mInt = g_settings.m_currentVideoSettings.m_InterlaceMethod;
+    if (mInt == VS_INTERLACEMETHOD_AUTO)
+      mInt = g_renderManager.AutoInterlaceMethod();
     if ((mDeintMode == VS_DEINTERLACEMODE_AUTO && (picture.iFlags & DVP_FLAG_INTERLACED)) || mDeintMode == VS_DEINTERLACEMODE_FORCE)
     {
       if(mInt == VS_INTERLACEMETHOD_SW_BLEND)

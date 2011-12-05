@@ -54,6 +54,7 @@
 #include "../dvdplayer/DVDClock.h"
 #include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
 #include "../dvdplayer/DVDCodecs/DVDCodecUtils.h"
+#include "../dvdplayer/IDVDPlayerVideoOutput.h"
 
 #define MAXPRESENTDELAY 0.500
 
@@ -105,7 +106,8 @@ CXBMCRenderManager::CXBMCRenderManager()
   m_presentmethod = PRESENT_METHOD_SINGLE;
   m_bReconfigured = false;
   m_hasCaptures = false;
-//  m_pClock = 0;
+  m_videoOutput = NULL;
+  m_flushing = false;
 }
 
 CXBMCRenderManager::~CXBMCRenderManager()
@@ -178,7 +180,7 @@ void CXBMCRenderManager::WaitPresentTime(double presenttime, bool reset_corr /* 
   // target wait should be earlier by 1 frametime to get to frontbuffer + targetpos as well as signal to view delay
   // and finally corrected by our wait clock tracking correction factor (m_presentcorr)
   double targetwaitclock = presenttime - ((1 + targetpos) * frametime) - signal_to_view_delay;
-CLog::Log(LOGDEBUG, "ASB: CXBMCRenderManager::WaitPresentTime targetwaitclock: %f presenttime: %f", targetwaitclock, presenttime);
+//CLog::Log(LOGDEBUG, "ASB: CXBMCRenderManager::WaitPresentTime targetwaitclock: %f presenttime: %f", targetwaitclock, presenttime);
   targetwaitclock += presentcorr * frametime;  //adjust by our accumulated correction
 
   // we now wait and wish our clock tick result to be targetpos out from target wait
@@ -277,7 +279,7 @@ CStdString CXBMCRenderManager::GetVSyncState()
 bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, float fps, unsigned flags, unsigned int format)
 {
   /* make sure any queued frame was fully presented */
-  if (IsConfigured() && CheckResolutionChange(fps) && !WaitDrained(500))
+  if (IsConfigured() && !WaitDrained(500))
       CLog::Log(LOGWARNING, "CRenderManager::Configure - timeout waiting for previous frame");
 
   CRetakeLock<CExclusiveLock> lock(m_sharedSection, false);
@@ -362,14 +364,13 @@ void CXBMCRenderManager::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
   UpdatePreFlipClock();
 
   m_presentstep = PRESENT_IDLE;
-  m_presentevent.Set();
+//  m_presentevent.Set();
 }
 
 unsigned int CXBMCRenderManager::PreInit()
 {
   CRetakeLock<CExclusiveLock> lock(m_sharedSection);
 
-  CLog::Log(LOGNOTICE, "------------------------- preinit");
   m_presentcorr = 0.0;
   m_presenterr  = 0.0;
   m_errorindex  = 0;
@@ -427,8 +428,6 @@ void CXBMCRenderManager::UnInit()
 
   m_overlays.Flush();
 
-  CLog::Log(LOGNOTICE, "------------------------- uninit");
-
   // free renderer resources.
   // TODO: we may also want to release the renderer here.
   if (m_pRenderer)
@@ -444,9 +443,15 @@ bool CXBMCRenderManager::Flush()
   {
     CLog::Log(LOGDEBUG, "%s - flushing renderer", __FUNCTION__);
 
+    m_flushing = true;
+    { CSingleLock lock (m_videoOutCritSect);
+      if (m_videoOutput)
+        m_videoOutput->Flush();
+    }
     CRetakeLock<CExclusiveLock> lock(m_sharedSection);
     m_pRenderer->Flush();
     m_flushEvent.Set();
+    m_flushing = false;
   }
   else
   {
@@ -749,8 +754,6 @@ void CXBMCRenderManager::Present(int &frameCount)
 
   Render(true, 0, 255);
 
-  frameCount = m_pRenderer->FramesInBuffers();
-
   UpdatePostRenderClock();
 
   /* wait for this present to be valid */
@@ -850,6 +853,9 @@ void CXBMCRenderManager::UpdateResolution()
 
 int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double pts, double presenttime, int playspeed, bool vclockresync /* = false */)
 {
+  if (m_flushing)
+    return -2;
+
   CSharedLock lock(m_sharedSection);
   if (!m_pRenderer)
     return -1;
@@ -869,7 +875,9 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double pts, double
   int index = m_pRenderer->GetImage(&image, source);
 
   if(index < 0)
+  {
     return index;
+  }
 
   double framedur = pic.iDuration;
   // set fieldsync if picture is interlaced
@@ -940,19 +948,23 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic, double pts, double
 
 int CXBMCRenderManager::WaitForBuffer(volatile bool& bStop)
 {
+  if (m_flushing)
+    return -2;
+
   CSharedLock lock(m_sharedSection);
   if (!m_pRenderer)
     return -1;
 
-  double timeout = GetPresentTime() + 1.0; //wait up to a second as this is our slowest allowed output rate
+  //wait up to a second as this is our slowest allowed output rate
+  double timeout = GetPresentTime() + 1.0;
   while(!m_pRenderer->HasFreeBuffer() && !bStop)
   {
     lock.Leave();
     m_flipEvent.WaitMSec(5);
     if(GetPresentTime() > timeout && !bStop)
     {
-//      m_pRenderer->LogBuffers();
       CLog::Log(LOGWARNING, "CRenderManager::WaitForBuffer - timeout waiting buffer");
+      m_pRenderer->LogBuffers();
       return -1;
     }
     lock.Enter();
@@ -1317,12 +1329,8 @@ bool CXBMCRenderManager::WaitDrained(int timeout /* = 100 */)
   return (m_presentstep == PRESENT_IDLE && m_pRenderer->GetNextRenderBufferIndex() == -1);
 }
 
-bool CXBMCRenderManager::CheckResolutionChange(float fps)
+void CXBMCRenderManager::RegisterVideoOutput(IDVDPlayerVideoOutput *videoOutput)
 {
-  if(!m_pRenderer)
-  {
-    CLog::Log(LOGERROR, "%s called without a valid Renderer object", __FUNCTION__);
-    return false;
-  }
-  return m_pRenderer->CheckResolutionChange(fps);
+  CSingleLock lock(m_videoOutCritSect);
+  m_videoOutput = videoOutput;
 }

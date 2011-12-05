@@ -185,7 +185,18 @@ bool CDVDVideoCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options
         m_pCodecContext->height   = hints.height;
         m_pCodecContext->coded_width   = hints.width;
         m_pCodecContext->coded_height  = hints.height;
-        if(vdp->Open(m_pCodecContext, pCodec->pix_fmts ? pCodec->pix_fmts[0] : PIX_FMT_NONE))
+
+        // check number of surfaces used in renderer
+        unsigned int surfaces = 0;
+        for(CDVDCodecOptions::iterator it = options.begin(); it != options.end(); it++)
+        {
+          if (it->m_name == "surfaces")
+          {
+            surfaces = std::atoi(it->m_value.c_str());
+            break;
+          }
+        }
+        if(vdp->Open(m_pCodecContext, pCodec->pix_fmts ? pCodec->pix_fmts[0] : PIX_FMT_NONE, surfaces))
         {
           m_pHardware = vdp;
           m_pCodecContext->codec_id = CODEC_ID_NONE; // ffmpeg will complain if this has been set
@@ -507,10 +518,12 @@ static double pts_itod(int64_t pts)
 
 bool CDVDVideoCodecFFmpeg::DiscardPicture()
 {
-  if(m_pHardware)
-    return m_pHardware->DiscardPresentPicture();
-  else //assume software decode discard is not required
-    return true;
+  return true;
+
+//  if(m_pHardware)
+//    return m_pHardware->DiscardPresentPicture();
+//  else //assume software decode discard is not required
+//    return true;
 }
 
 int CDVDVideoCodecFFmpeg::Decode(BYTE* pData, int iSize, double dts, double pts)

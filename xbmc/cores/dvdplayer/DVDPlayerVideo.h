@@ -111,8 +111,6 @@ public:
 
   void SetSpeed(int iSpeed);
   int OutputPicture(const DVDVideoPicture* src, double pts, int playSpeed, int prevPlaySpeed = 0, bool outputEarly = false, bool resync = false);
-  bool CheckRenderConfig(const DVDVideoPicture* src);
-  void ResumeAfterRefreshChange();
   double GetCorrectedPicturePts(double pts, double& frametime); //return pattern corrected video picture pts and calculated frametime
 
 #ifdef HAS_VIDEO_PLAYBACK
@@ -144,8 +142,6 @@ protected:
 
   int CalcDropRequirement();
   void ResetDropInfo();
-  void SetRefreshChanging(bool changing = true);
-  bool GetRefreshChanging();
   int GetPlaySpeed();
   void SetPlaySpeed(int speed);
   void SetProcessNextFrame(bool state = true);
@@ -192,7 +188,6 @@ protected:
     unsigned int color_transfer;
     double       framerate;
     unsigned     flags;
-    bool         refreshChanging;
   } m_output; //holds currently configured output
 
 #define DROPINFO_SAMPBUFSIZE 300
