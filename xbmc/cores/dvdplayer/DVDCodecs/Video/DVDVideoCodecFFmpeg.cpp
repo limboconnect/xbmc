@@ -481,19 +481,26 @@ unsigned int CDVDVideoCodecFFmpeg::SetFilters(unsigned int flags)
     flags &= ~FILTER_DEINTERLACE_ANY | FILTER_DEINTERLACE_YADIF;
   }
 
-  m_iFilterFlags = flags;
   return flags;
 }
 
-bool CDVDVideoCodecFFmpeg::WaitForFreeBuffer()
+bool CDVDVideoCodecFFmpeg::HasFreeBuffer()
 {
   bool bReturn = true;
   if (m_pHardware && m_pHardware->QueueIsFull(true))
     bReturn = false;
   else if (!m_pHardware)
-    m_bufferEvent.Wait();
+    bReturn = false;
 
   return bReturn;
+}
+
+bool CDVDVideoCodecFFmpeg::SupportBuffering()
+{
+  if (m_pHardware)
+    return true;
+  else
+    return false;
 }
 
 union pts_union
@@ -1094,8 +1101,6 @@ bool CDVDVideoCodecFFmpeg::GetPictureCommon(DVDVideoPicture* pDvdVideoPicture)
 
   if(!m_started)
     pDvdVideoPicture->iFlags |= DVP_FLAG_DROPPED;
-
-  pDvdVideoPicture->iGroupId = m_iGroupId;
 
 //CLog::Log(LOGDEBUG,"ASB: CDVDVideoCodecFFmpeg::GetPictureCommon pDvdVideoPicture->pts: %f pDvdVideoPicture->iDisplayWidth: %i pDvdVideoPicture->iDisplayHeight: %i", pDvdVideoPicture->pts, (int)pDvdVideoPicture->iDisplayWidth, (int)pDvdVideoPicture->iDisplayHeight);
 

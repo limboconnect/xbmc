@@ -112,7 +112,7 @@ public:
   enum OutSignal
   {
     NEWPIC,
-    PROCESSOVERLAYONLY,
+    PROCESSSTILL,
     FINISH
   };
   enum InSignal

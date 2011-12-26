@@ -139,13 +139,6 @@ CLinuxRendererGL::CLinuxRendererGL()
   m_renderQuality = RQ_SINGLEPASS;
   m_iFlags = 0;
 
-  m_iLastRenderBuffer = -1;
-  m_iFlipRequestRenderBuffer = -1;
-  m_iCurrentRenderBuffer = 0;
-  m_iOutputRenderBuffer = 0;
-  m_iDisplayedRenderBuffer = 0;
-//  m_bAllRenderBuffersDisplayed = true;
-//  m_bAllRenderBuffersOutput = false;
   m_NumRenderBuffers = NUM_BUFFERS;
   m_flipindex = 0;
   m_currentField = FIELD_FULL;
@@ -261,9 +254,8 @@ bool CLinuxRendererGL::ValidateRenderTarget()
     m_iFlipRequestRenderBuffer = -1;
     m_iCurrentRenderBuffer = 0;
     m_iOutputRenderBuffer = 0;
-    m_iDisplayedRenderBuffer = m_NumRenderBuffers;
-//    m_bAllRenderBuffersDisplayed = true;
-//    m_bAllRenderBuffersOutput = false;
+    m_iDisplayedRenderBuffer = 0;
+    m_bAllRenderBuffersDisplayed = true;
 
     m_bValidated = true;
     return true;
@@ -816,12 +808,20 @@ static int lastDisp = 0;
   CSingleLock lock(m_BufferCounterSection);
 
   int last = m_iDisplayedRenderBuffer;
-  if (m_iFlipRequestRenderBuffer == m_iCurrentRenderBuffer)
-    m_iDisplayedRenderBuffer = m_iCurrentRenderBuffer;
-  else
-    m_iDisplayedRenderBuffer = (m_iCurrentRenderBuffer + m_NumRenderBuffers - 1) % m_NumRenderBuffers;
+
+  // not true for e.g. bob de-interlacing
+//  if (m_iFlipRequestRenderBuffer == m_iCurrentRenderBuffer)
+//    m_iDisplayedRenderBuffer = m_iCurrentRenderBuffer;
+//  else
+
+  m_iDisplayedRenderBuffer = (m_iCurrentRenderBuffer + m_NumRenderBuffers - 1) % m_NumRenderBuffers;
 
   m_iFlipRequestRenderBuffer = m_iCurrentRenderBuffer;
+
+  // we have caught up with output so all buffers are re-usable
+  if (last != m_iDisplayedRenderBuffer
+      && m_iDisplayedRenderBuffer == m_iOutputRenderBuffer)
+    m_bAllRenderBuffersDisplayed = true;
 
   if (last != m_iDisplayedRenderBuffer &&
       m_iDisplayedRenderBuffer != m_iCurrentRenderBuffer)
@@ -852,18 +852,11 @@ bool CLinuxRendererGL::HasFreeBuffer()
   if (!m_bValidated)
     return false;
 
-  // we have a free buffer to prepare for render when we have not yet caught up with 
-  // the 'displayed' render buffer index (unless 'displayed' and 'current' have both caught up with 'output'
-  // where m_bAllRenderBuffersDisplayed will have been set)
-  // in which case all 3 values will be the same and thus all buffers are free
-  // See "Render Buffer State Description" in header for information.
-
   CSingleLock lock(m_BufferCounterSection);
 
   int outputPlus1 = (m_iOutputRenderBuffer + 1) % m_NumRenderBuffers;
-  if ((m_iOutputRenderBuffer == m_iDisplayedRenderBuffer
-      && m_iOutputRenderBuffer != m_iCurrentRenderBuffer)
-      || outputPlus1 == m_iCurrentRenderBuffer)
+  if ((m_iOutputRenderBuffer == m_iDisplayedRenderBuffer && !m_bAllRenderBuffersDisplayed)
+     || outputPlus1 == m_iCurrentRenderBuffer)
     return false;
   else
     return true;
@@ -886,8 +879,9 @@ int CLinuxRendererGL::FlipFreeBuffer()
   // See "Render Buffer State Description" in header for information.
   if (HasFreeBuffer())
   {
-     m_iOutputRenderBuffer = (m_iOutputRenderBuffer + 1) % m_NumRenderBuffers;
-     return m_iOutputRenderBuffer;
+    m_bAllRenderBuffersDisplayed = false;
+    m_iOutputRenderBuffer = (m_iOutputRenderBuffer + 1) % m_NumRenderBuffers;
+    return m_iOutputRenderBuffer;
   }
   else
     return -1;
@@ -942,13 +936,6 @@ unsigned int CLinuxRendererGL::PreInit()
   if ( m_resolution == RES_WINDOW )
     m_resolution = RES_DESKTOP;
 
-  m_iLastRenderBuffer = -1;
-  m_iFlipRequestRenderBuffer = -1;
-  m_iCurrentRenderBuffer = 0;
-  m_iOutputRenderBuffer = 0;
-  m_iDisplayedRenderBuffer = 0;
-//  m_bAllRenderBuffersDisplayed = true;
-//  m_bAllRenderBuffersOutput = false;
   m_NumRenderBuffers = NUM_BUFFERS;
 
   // setup the background colour

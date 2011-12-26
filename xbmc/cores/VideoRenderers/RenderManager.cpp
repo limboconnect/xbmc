@@ -303,8 +303,6 @@ bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsi
     m_bReconfigured = true;
     m_presentstep = PRESENT_IDLE;
     m_presentevent.Set();
-//    m_pClock = 0;
-    //m_bDrain = false;
   }
 
   return result;
@@ -339,14 +337,18 @@ void CXBMCRenderManager::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
     if (m_presentstep == PRESENT_IDLE)
       CheckNextBuffer();
 
-    //m_overlays.FlipRender();
-
     if(m_presentstep == PRESENT_FLIP)
     {
       m_overlays.FlipRender();
       m_pRenderer->FlipPage(m_presentsource);
       m_presentstep = PRESENT_FRAME;
       m_presentevent.Set();
+      m_requestOverlayFlip = false;
+    }
+    else if (m_requestOverlayFlip)
+    {
+      m_overlays.FlipRender();
+      m_requestOverlayFlip = false;
     }
   }
 
@@ -363,8 +365,7 @@ void CXBMCRenderManager::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
   UpdatePostRenderClock();
   UpdatePreFlipClock();
 
-  m_presentstep = PRESENT_IDLE;
-//  m_presentevent.Set();
+  m_presentevent.Set();
 }
 
 unsigned int CXBMCRenderManager::PreInit()
@@ -762,7 +763,10 @@ void CXBMCRenderManager::Present(int &frameCount)
   UpdatePreFlipClock();
 
   frameCount = m_pRenderer->FramesInBuffers();
-//  m_presentevent.Set();
+  if (m_presentstep == PRESENT_FRAME2)
+    frameCount++;
+
+  m_presentevent.Set();
 }
 
 /* simple present method */
@@ -963,7 +967,7 @@ int CXBMCRenderManager::WaitForBuffer(volatile bool& bStop)
     m_flipEvent.WaitMSec(5);
     if(GetPresentTime() > timeout && !bStop)
     {
-      CLog::Log(LOGWARNING, "CRenderManager::WaitForBuffer - timeout waiting buffer");
+      CLog::Log(LOGWARNING, "CRenderManager::WaitForBuffer - timeout waiting for buffer");
       m_pRenderer->LogBuffers();
       return -1;
     }

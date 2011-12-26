@@ -439,13 +439,14 @@ void CDVDPlayerVideo::Process()
 
         if (m_started && m_stalled) //for clarity
         {
-          CLog::Log(LOGDEBUG, "CDVDPlayerVideo move to overlay only mode");
           // tell output to process overlays only every interval
           ToOutputMessage toMsg;
+          FromOutputMessage fromMsg;
           toMsg.iSpeed = speed;
           toMsg.fInterval = frametime;
           toMsg.bPlayerStarted = m_started;
-          m_pVideoOutput->SendDataMessage(DataProtocol::PROCESSOVERLAYONLY, toMsg);
+
+          m_pVideoOutput->SendDataMessage(DataProtocol::PROCESSSTILL, toMsg, true, 1000, &fromMsg);
         }
         continue;
       }
@@ -625,7 +626,8 @@ CLog::Log(LOGDEBUG, "CDVDPlayerVideo VC_HINT_HARDDRAIN");
           m_iNrOfPicturesNotToSkip = 5;
         }
 
-        iDropDirective = CalcDropRequirement();
+        if (m_started)
+          iDropDirective = CalcDropRequirement();
         if (bPacketDrop)
           iDecoderHint |= VC_HINT_NOPRESENT;
         if (iDropDirective & DC_SUBTLE)
@@ -667,7 +669,6 @@ CLog::Log(LOGDEBUG, "CDVDPlayerVideo VC_HINT_HARDDRAIN");
         }
         mFilters = m_pVideoCodec->SetFilters(mFilters);
 
-        m_pVideoCodec->SetGroupId(pPacket->iGroupId);
         m_pVideoCodec->SetForcedAspectRatio(m_fForcedAspectRatio);
 
         // don't let codec converge count instantly reduce buffered message count for a stream
@@ -777,7 +778,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
         ToOutputMessage toMsg;
         FromOutputMessage fromMsg;
         bool bGotMsg = false;
-        bool bMsgSent = false;
+
         // check for a new picture
         if (iDecoderState & VC_PICTURE)
         {
@@ -798,6 +799,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
 
           toMsg.iSpeed = speed;
           toMsg.bPlayerStarted = m_started;
+          toMsg.iGroupId = pPacket->iGroupId;
 
           if (!toMsg.bDrop)
           {
@@ -807,8 +809,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
              if (m_iNrOfPicturesNotToSkip > 0)
                 m_iNrOfPicturesNotToSkip--;
           }
-          bMsgSent = true;
-          if (!m_started)
+          if (!m_started || !m_pVideoCodec->SupportBuffering())
           {
             if (!m_pVideoOutput->SendDataMessage(DataProtocol::NEWPIC, toMsg, true, 5000, &fromMsg))
             {
@@ -833,7 +834,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
 
            if( iResult & EOS_ABORT )
            {
-              //if we break here and we directly try to decode again wihout
+              //if we break here and we directly try to decode again without
               //flushing the video codec things break for some reason
               //i think the decoder (libmpeg2 atleast) still has a pointer
               //to the data, and when the packet is freed that will fail.
@@ -845,6 +846,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
            {
               m_codecname = m_pVideoCodec->GetName();
               m_started = true;
+              ResetDropInfo();
               fStartedClock = CDVDClock::GetAbsoluteClock(true);
               m_messageParent.Put(new CDVDMsgInt(CDVDMsg::PLAYER_STARTED, DVDPLAYER_VIDEO));
            }
@@ -857,9 +859,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
         }
 
         // wait if decoder buffers are full or codec does not support buffering
-        if (!bMsgSent)
-          m_pVideoCodec->SignalBufferChange(true);
-        if (!m_pVideoCodec->WaitForFreeBuffer())
+        if (m_pVideoCodec->SupportBuffering() && !m_pVideoCodec->HasFreeBuffer())
         {
           bFreeDecoderBuffer = false;
           break;
@@ -1555,7 +1555,9 @@ int CDVDPlayerVideo::ProcessOverlays(DVDVideoPicture* pSource, double pts, doubl
     VecOverlaysIter it = pVecOverlays->begin();
 
     if (render == OVERLAY_GPU && g_renderManager.OverlayFlipOutput() == -1)
-        return -1; 
+    {
+      return -1;
+    }
     //Check all overlays and render those that should be rendered, based on time and forced
     //Both forced and subs should check timeing, pts == 0 in the stillframe case
     bool flipped = false;
@@ -1887,8 +1889,6 @@ int CDVDPlayerVideo::OutputPicture(const DVDVideoPicture* src, double pts, int p
     m_pVideoCodec->DiscardPicture();
     return EOS_DROPPED;
   }
-
-  m_pVideoCodec->SignalBufferChange(true);
 
   return result;
 #else

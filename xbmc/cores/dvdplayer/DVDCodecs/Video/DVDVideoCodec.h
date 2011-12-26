@@ -268,27 +268,18 @@ public:
     return 0;
   }
 
-  virtual bool WaitForFreeBuffer()
+  virtual bool HasFreeBuffer()
   {
-    m_bufferEvent.Wait();
-    return true;
+    return false;
   }
 
-  virtual void SignalBufferChange(bool value)
+  virtual bool SupportBuffering()
   {
-    if (value)
-      m_bufferEvent.Set();
-    else
-      m_bufferEvent.Reset();
+    return false;
   }
 
-  virtual void SetGroupId(int iGroup) {m_iGroupId = iGroup;};
   virtual void SetForcedAspectRatio(float fForcedAspectRatio){m_fForcedAspectRatio = fForcedAspectRatio;};
-  virtual unsigned int GetFilters() { return m_iFilterFlags; }
 
 protected:
-  int    m_iGroupId;
   float  m_fForcedAspectRatio;
-  unsigned int  m_iFilterFlags;
-  CEvent m_bufferEvent;
 };

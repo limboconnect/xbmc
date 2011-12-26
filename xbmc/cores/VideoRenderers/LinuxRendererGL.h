@@ -243,6 +243,7 @@ protected:
   int m_iFlipRequestRenderBuffer;
   int m_iOutputRenderBuffer;
   int m_iDisplayedRenderBuffer;
+  bool m_bAllRenderBuffersDisplayed;
   CCriticalSection m_BufferCounterSection;
 
   bool m_bConfigured;

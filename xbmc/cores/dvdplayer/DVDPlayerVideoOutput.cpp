@@ -341,6 +341,7 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
         switch (signal)
         {
         case ControlProtocol::RESET:
+          CLog::Log(LOGDEBUG, "DVDPlayerVideoOutput - reset");
           DestroyGlxContext();
           ResetExtVariables();
           m_state = TOP_UNCONFIGURED;
@@ -348,6 +349,7 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           msg->Reply(ControlProtocol::OK);
           return;
         case ControlProtocol::UNCONFIGURE:
+          CLog::Log(LOGDEBUG, "DVDPlayerVideoOutput - unconfigure");
           DestroyGlxContext();
           ResetExtVariables();
           m_extTimeout = 50000;
@@ -355,10 +357,12 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           msg->Reply(ControlProtocol::OK);
           return;
         case ControlProtocol::RELEASE_PROCESSOR:
+          CLog::Log(LOGDEBUG, "DVDPlayerVideoOutput - release processor");
           g_renderManager.ReleaseProcessor();
           msg->Reply(ControlProtocol::OK);
           return;
         case ControlProtocol::SPEEDCHANGE:
+          CLog::Log(LOGDEBUG, "DVDPlayerVideoOutput - speed change");
           m_extPlayerSpeed = *(int*)msg->data;
           if (m_extPlayerSpeed == DVD_PLAYSPEED_PAUSE)
           {
@@ -370,10 +374,12 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           }
           return;
         case ControlProtocol::DEALLOCPIC:
+          CLog::Log(LOGDEBUG, "DVDPlayerVideoOutput - dealloc pic");
           m_picture.iFlags &= ~DVP_FLAG_ALLOCATED;
           m_extClockFlush = true;
           return;
         case ControlProtocol::EXPECTDELAY:
+          CLog::Log(LOGDEBUG, "DVDPlayerVideoOutput - expect delay");
           double *data;
           data = (double*)msg->data;
           m_extTimeout = *data;
@@ -413,20 +419,19 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
             m_extInterval = data->fInterval;
             m_extDrop = data->bDrop;
             m_extPlayerStarted = data->bPlayerStarted;
+            m_extGroupId = data->iGroupId;
           }
           m_bGotPicture = GetPicture(m_extPts, m_extFrametime);
           if (m_bGotPicture)
           {
             RefreshGlxContext();
+            m_picture.iGroupId = m_extGroupId;
             m_state = TOP_CONFIGURED_CLOCKSYNC;
             m_bStateMachineSelfTrigger = true;
           }
           else
             m_extTimeout = 5000;
 
-//          m_state = TOP_CONFIGURING;
-//          m_extTimeout = 5000;
-//          m_controlPort.SendOutMessage(ControlProtocol::CONFIGURED);
           return;
         default:
           break;
@@ -497,17 +502,32 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
             m_extInterval = data->fInterval;
             m_extDrop = data->bDrop;
             m_extPlayerStarted = data->bPlayerStarted;
+            m_extGroupId = data->iGroupId;
           }
 
           m_bGotPicture = GetPicture(m_extPts, m_extFrametime, m_extDrop);
 
           if (m_bGotPicture)
           {
+            m_picture.iGroupId = m_extGroupId;
             m_state = TOP_CONFIGURED_CLOCKSYNC;
             m_bStateMachineSelfTrigger = true;
           }
           else
             m_extTimeout = 1000;
+          return;
+        case DataProtocol::PROCESSSTILL:
+          data = (ToOutputMessage*)msg->data;
+          if (data)
+          {
+            m_extSpeed = data->iSpeed;
+            m_extInterval = data->fInterval;
+            m_extDrop = data->bDrop;
+            m_extPlayerStarted = data->bPlayerStarted;
+          }
+
+          m_state = TOP_CONFIGURED_CLOCKSYNC;
+          m_bStateMachineSelfTrigger = true;
           return;
         default:
           break;
@@ -544,11 +564,11 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           m_state = TOP_CONFIGURED_PROCOVERLAY;
           m_bStateMachineSelfTrigger = true;
           return;
-        case DataProtocol::PROCESSOVERLAYONLY:
-          if (m_extPlayerSpeed == DVD_PLAYSPEED_PAUSE && m_extPrevOutputPts != DVD_NOPTS_VALUE)
-             m_pClock->Discontinuity(m_extPrevOutputPts + m_extVideoDelay);  //get the clock re-positioned approximately
-          else if (m_extPts != DVD_NOPTS_VALUE)
-             m_pClock->Discontinuity(m_extPts + m_extVideoDelay - (m_extPlayerSpeed / DVD_PLAYSPEED_NORMAL) * DVD_MSEC_TO_TIME(50));  //get the clock re-positioned approximately
+        case DataProtocol::PROCESSSTILL:
+//          if (m_extPlayerSpeed == DVD_PLAYSPEED_PAUSE && m_extPrevOutputPts != DVD_NOPTS_VALUE)
+//             m_pClock->Discontinuity(m_extPrevOutputPts + m_extVideoDelay);  //get the clock re-positioned approximately
+//          else if (m_extPts != DVD_NOPTS_VALUE)
+//             m_pClock->Discontinuity(m_extPts + m_extVideoDelay - (m_extPlayerSpeed / DVD_PLAYSPEED_NORMAL) * DVD_MSEC_TO_TIME(50));  //get the clock re-positioned approximately
 
           m_state = TOP_CONFIGURED_PROCOVERLAY;
           m_bStateMachineSelfTrigger = true;
@@ -564,23 +584,24 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
       {
         switch (signal)
         {
-        case DataProtocol::PROCESSOVERLAYONLY:
+        case DataProtocol::PROCESSSTILL:
           int result;
-          double clock, interval;
-          clock = m_pClock->GetAbsoluteClock(true);
-          interval = m_extInterval ? m_extInterval : DVD_MSEC_TO_TIME(100);
           SetPts(m_extPts);
-          if (clock - m_extPrevOutputClock >= interval)
+          result = m_pVideoPlayer->ProcessOverlays(&m_picture, m_extPts, m_extOverlayDelay);
+
+          if (m_picture.iFlags & DVP_FLAG_ALLOCATED)
           {
-            result = m_pVideoPlayer->ProcessOverlays(&m_picture, m_extPts, m_extOverlayDelay);
-            if (result != -1)
-            {
-              g_application.NewFrame();
-              if (m_extPts != DVD_NOPTS_VALUE)
-                m_extPts += clock - m_extPrevOutputClock;
-            }
+            m_state = TOP_CONFIGURED_PROCPICTURE;
+            m_bStateMachineSelfTrigger = true;
           }
-          m_state = TOP_CONFIGURED_TRYPIC;
+          else
+          {
+            if (m_extPlayerSpeed != DVD_PLAYSPEED_PAUSE && m_extPts != DVD_NOPTS_VALUE)
+              m_extPts + m_extFrametime * m_extPlayerSpeed / abs(m_extPlayerSpeed);
+            g_application.NewFrame();
+            m_state = TOP_CONFIGURED_TRYPIC;
+          }
+
           m_extTimeout = 500;
           return;
         case DataProtocol::NEWPIC:
@@ -601,13 +622,14 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
         switch (signal)
         {
         case DataProtocol::NEWPIC:
+        case DataProtocol::PROCESSSTILL:
           int result;
           result = m_pVideoPlayer->OutputPicture(&m_picture, m_extPts + m_extVideoDelay, m_extPlayerSpeed,
                                                          m_extPrevOutputSpeed, m_extOutputEarly, m_extResync);
           if (!(result & (EOS_CONFIGURE | EOS_DROPPED | EOS_ABORT)))
             g_application.NewFrame();
 
-          if (result)
+          if (result || msg->isSync)
              msg->Reply(DataProtocol::OUTPICRESULT, &result, sizeof(result));
 
           m_extPrevOutputClock = m_pClock->GetAbsoluteClock(true);
@@ -616,7 +638,7 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
           // required for future pics with no pts value
           m_extPrevOutputPts = m_extPts;
           if (m_extPlayerSpeed != DVD_PLAYSPEED_PAUSE && m_extPts != DVD_NOPTS_VALUE)
-             m_extPts = m_extPts + m_extFrametime * m_extPlayerSpeed / abs(m_extPlayerSpeed);
+            m_extPts += m_extFrametime * m_extPlayerSpeed / abs(m_extPlayerSpeed);
 
           m_extOutputEarly = false;
           m_state = TOP_CONFIGURED_TRYPIC;
@@ -742,7 +764,7 @@ bool CDVDPlayerVideoOutput::GetPicture(double& pts, double& frametime, bool drop
     sPostProcessType.clear();
 
     if (drop)
-       m_picture.iFlags |= DVP_FLAG_DROPPED;
+      m_picture.iFlags |= DVP_FLAG_DROPPED;
 
     //TODO: store untouched pts and dts values in ring buffer of say 20 entries to allow decoder flush to make a better job of starting from correct place
 

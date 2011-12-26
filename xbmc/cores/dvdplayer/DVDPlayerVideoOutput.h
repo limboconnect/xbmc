@@ -42,11 +42,13 @@ struct ToOutputMessage
     bPlayerStarted = false;
     iSpeed = 0;
     fInterval = 0.0;
+    iGroupId = 0;
   };
   bool bDrop; //drop flag (eg drop the picture)
   bool bPlayerStarted; //video player has reached started state
   double fInterval; //interval in dvd time (eg for overlay freqeuncy)
   int iSpeed; //video player play speed
+  int iGroupId;
 };
 
 struct FromOutputMessage
@@ -124,4 +126,5 @@ protected:
   bool m_extClockFlush;
   bool m_extPlayerStarted;
   bool m_extDrop;
+  int m_extGroupId;
 };
