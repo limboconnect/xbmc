@@ -407,6 +407,9 @@ void CDVDPlayerVideo::Process()
     // but only when not paused (that is unless requested to step frame)
     if (ret == MSGQ_TIMEOUT)
     {
+      if (m_pVideoCodec && m_pVideoCodec->SupportBuffering())
+        bFreeDecoderBuffer = m_pVideoCodec->HasFreeBuffer();
+
       if ( (speed != DVD_PLAYSPEED_PAUSE || bMustProcessNextFrame) &&
            ((!bFreeDecoderBuffer) || bStreamEOF || (clock - fLastDecodedPictureClock < frametime * 5)) )
       {
