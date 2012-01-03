@@ -629,7 +629,7 @@ CLog::Log(LOGDEBUG, "CDVDPlayerVideo VC_HINT_HARDDRAIN");
           m_iNrOfPicturesNotToSkip = 5;
         }
 
-        if (m_started)
+        if (m_started && m_bAllowDrop)
           iDropDirective = CalcDropRequirement();
         if (bPacketDrop)
           iDecoderHint |= VC_HINT_NOPRESENT;
@@ -796,7 +796,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
           // 2) if our lateness management has requested we drop on output then request 
           if ( (bPacketDrop && !(iDecoderState & (VC_NOTDECODERDROPPED | VC_DROPPED))) ||
                (iDropDirective & DC_OUTPUT) )
-             toMsg.bDrop = true;
+            toMsg.bDrop = true;
           else
              toMsg.bDrop = false;
 

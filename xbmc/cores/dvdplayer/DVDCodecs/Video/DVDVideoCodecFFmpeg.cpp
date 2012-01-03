@@ -439,7 +439,8 @@ void CDVDVideoCodecFFmpeg::SetDropMethod(bool bDrop, bool bInputPacket /*= true 
            m_bDecoderDropRequested = true;
            if (HintDropUrgent())
            {
-              m_pCodecContext->skip_frame = AVDISCARD_BIDIR; //skip frame for non-reference and b-frame
+             //AVDISCARD_BIDIR causes corruption
+              m_pCodecContext->skip_frame = AVDISCARD_NONREF;
               m_pCodecContext->skip_idct = AVDISCARD_NONREF; //skip dequant for non-reference frames
               m_pCodecContext->skip_loop_filter = AVDISCARD_NONREF; //skip deblocking filter for non-reference frames
            }

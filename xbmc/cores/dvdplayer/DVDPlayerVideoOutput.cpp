@@ -48,6 +48,7 @@ CDVDPlayerVideoOutput::CDVDPlayerVideoOutput(CDVDPlayerVideo *videoplayer, CDVDC
 CDVDPlayerVideoOutput::~CDVDPlayerVideoOutput()
 {
   g_renderManager.RegisterVideoOutput(NULL);
+  g_Windowing.Unregister(this);
   Dispose();
 }
 
@@ -56,10 +57,21 @@ void CDVDPlayerVideoOutput::Flush()
   SendControlMessage(ControlProtocol::UNCONFIGURE,0,0,true, 1000);
 }
 
+void CDVDPlayerVideoOutput::OnLostDevice()
+{
+  SendControlMessage(ControlProtocol::UNCONFIGURE,0,0,true, 1000);
+}
+
+void CDVDPlayerVideoOutput::OnResetDevice()
+{
+  SendControlMessage(ControlProtocol::UNCONFIGURE,0,0,true, 1000);
+}
+
 void CDVDPlayerVideoOutput::Start()
 {
   Create();
   g_renderManager.RegisterVideoOutput(this);
+  g_Windowing.Register(this);
 }
 
 void CDVDPlayerVideoOutput::Reset()

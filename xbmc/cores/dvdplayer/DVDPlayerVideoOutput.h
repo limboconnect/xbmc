@@ -33,6 +33,7 @@
 #include <GL/glx.h>
 #include "DVDPlayerVideoOutputProtocol.h"
 #include "IDVDPlayerVideoOutput.h"
+#include "guilib/DispResource.h"
 
 struct ToOutputMessage
 {
@@ -60,13 +61,15 @@ struct FromOutputMessage
   int iResult;
 };
 
-class CDVDPlayerVideoOutput : private CThread, public IDVDPlayerVideoOutput
+class CDVDPlayerVideoOutput : private CThread, public IDVDPlayerVideoOutput, public IDispResource
 {
 public:
   CDVDPlayerVideoOutput(CDVDPlayerVideo *videoplayer, CDVDClock* pClock);
   virtual ~CDVDPlayerVideoOutput();
 
   void Flush();
+  virtual void OnLostDevice();
+  virtual void OnResetDevice();
   void Start();
   void Reset();
   void ReleaseCodec();
