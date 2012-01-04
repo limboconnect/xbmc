@@ -845,7 +845,7 @@ CLog::Log(LOGDEBUG, "ASB: CDVDPlayerVideo hurry up fLastDecodedPictureClock: %f 
               break;
            }
 
-           if(!m_started)
+           if(!m_started && !(iResult & EOS_DROPPED))
            {
               m_codecname = m_pVideoCodec->GetName();
               m_started = true;
