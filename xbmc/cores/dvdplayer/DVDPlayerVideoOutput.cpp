@@ -566,8 +566,12 @@ void CDVDPlayerVideoOutput::StateMachine(int signal, Protocol *port, Message *ms
         {
         case DataProtocol::NEWPIC:
           m_extResync = false;
-          if (m_extPlayerStarted && m_extPrevOutputSpeed == DVD_PLAYSPEED_PAUSE && m_extPlayerSpeed != DVD_PLAYSPEED_PAUSE)
+          if (m_extPlayerStarted && m_extPts != DVD_NOPTS_VALUE
+          && ((m_extPrevOutputSpeed == DVD_PLAYSPEED_PAUSE && m_extPlayerSpeed != DVD_PLAYSPEED_PAUSE)
+          || m_extClockFlush))
           {
+
+            CLog::Log(LOGDEBUG,"DVDPlayerVideoOutput - resync clock, pts: %f,  flush: %d", m_extPts, m_extClockFlush);
             ResyncClockToVideo(m_extPts + m_extVideoDelay, m_extPlayerSpeed, m_extClockFlush);
             m_extClockFlush = false;
             m_extResync = true;
@@ -685,6 +689,7 @@ void CDVDPlayerVideoOutput::ResetExtVariables()
   m_extResync = false;
   m_extClockFlush = true;
   m_extOutputEarly = true;
+  m_extPlayerStarted = false;
   memset(&m_picture, 0, sizeof(DVDVideoPicture));
 }
 
