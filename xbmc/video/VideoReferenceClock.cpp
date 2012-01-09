@@ -1631,6 +1631,7 @@ bool CVideoReferenceClock::UpdateRefreshrate(bool Forced /*= false*/)
       m_RefreshRate = NvRefreshRate;
       return true;
     }
+  }
 
   CSingleLock SingleLock(m_CritSection);
   m_RefreshRate = MathUtils::round_int(g_settings.m_ResInfo[g_graphicsContext.GetVideoResolution()].fRefreshRate);
