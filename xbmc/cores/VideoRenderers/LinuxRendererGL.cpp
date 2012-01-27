@@ -224,7 +224,7 @@ bool CLinuxRendererGL::ValidateRenderer()
 
 void CLinuxRendererGL::ManageTextures()
 {
-  m_NumYV12Buffers = 2;
+  m_NumYV12Buffers = NUM_BUFFERS;
   //m_iYV12RenderBuffer = 0;
   return;
 }
@@ -732,13 +732,6 @@ void CLinuxRendererGL::FlipPage(int source)
 
   m_buffers[m_iYV12RenderBuffer].flipindex = ++m_flipindex;
 
-#ifdef HAVE_LIBVDPAU  
-  if (((m_renderMethod & RENDER_VDPAU)
-      || CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_VDPAU_420)
-      && m_buffers[m_iYV12RenderBuffer].vdpau)
-    m_buffers[m_iYV12RenderBuffer].vdpau->Present();
-#endif
-
   return;
 }
 
@@ -753,7 +746,7 @@ unsigned int CLinuxRendererGL::PreInit()
     m_resolution = RES_DESKTOP;
 
   m_iYV12RenderBuffer = 0;
-  m_NumYV12Buffers = 2;
+  m_NumYV12Buffers = NUM_BUFFERS;
 
   // setup the background colour
   m_clearColour = (float)(g_advancedSettings.m_videoBlackBarColour & 0xff) / 0xff;
@@ -1457,17 +1450,11 @@ void CLinuxRendererGL::RenderVDPAU(int index, int field)
 {
 #ifdef HAVE_LIBVDPAU
   YUVPLANE &plane = m_buffers[index].fields[0][1];
-  CVDPAU   *vdpau = m_buffers[m_iYV12RenderBuffer].vdpau;
-
-  if (!vdpau)
-    return;
 
   glEnable(m_textureTarget);
   glActiveTextureARB(GL_TEXTURE0);
 
   glBindTexture(m_textureTarget, plane.id);
-
-  vdpau->BindPixmap();
 
   // Try some clamping or wrapping
   glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -1524,8 +1511,6 @@ void CLinuxRendererGL::RenderVDPAU(int index, int field)
 
   if (m_pVideoFilterShader)
     m_pVideoFilterShader->Disable();
-
-  vdpau->ReleasePixmap();
 
   glBindTexture (m_textureTarget, 0);
   glDisable(m_textureTarget);
@@ -2224,7 +2209,7 @@ bool CLinuxRendererGL::CreateVDPAUTexture(int index)
 void CLinuxRendererGL::UploadVDPAUTexture(int index)
 {
 #ifdef HAVE_LIBVDPAU
-  CVDPAU   *vdpau = m_buffers[index].vdpau;
+  VDPAU::CVdpauRenderPicture *vdpau = m_buffers[index].vdpau;
 
   unsigned int flipindex = m_buffers[index].flipindex;
   YUVFIELDS &fields = m_buffers[index].fields;
@@ -2237,19 +2222,7 @@ void CLinuxRendererGL::UploadVDPAUTexture(int index)
     return;
   }
 
-  glEnable(m_textureTarget);
-
-  if (fields[0][1].flipindex != flipindex && vdpau->SetTexture(0,0))
-  {
-    fields[0][1].id = vdpau->GetTexture();
-    fields[0][1].flipindex = flipindex;
-  }
-  else if (fields[0][1].flipindex != flipindex)
-  {
-    fields[0][1].id = plane.id;
-  }
-  glPixelStorei(GL_UNPACK_ALIGNMENT,1); //what's this for?
-  glDisable(m_textureTarget);
+  fields[0][1].id = vdpau->texture[0];
 
   m_eventTexturesDone[index]->Set();
 #endif
@@ -2305,7 +2278,7 @@ bool CLinuxRendererGL::CreateVDPAUTexture420(int index)
 
   for(int p = 0;p<3;p++)
   {
-    pbo[p] = NULL;
+    pbo[p] = None;
   }
 
   // YUV
@@ -2364,7 +2337,7 @@ bool CLinuxRendererGL::CreateVDPAUTexture420(int index)
 void CLinuxRendererGL::UploadVDPAUTexture420(int index)
 {
 #ifdef HAVE_LIBVDPAU
-  CVDPAU   *vdpau = m_buffers[index].vdpau;
+  VDPAU::CVdpauRenderPicture *vdpau = m_buffers[index].vdpau;
 
   unsigned int flipindex = m_buffers[index].flipindex;
   YUVFIELDS &fields = m_buffers[index].fields;
@@ -2380,29 +2353,24 @@ void CLinuxRendererGL::UploadVDPAUTexture420(int index)
     return;
   }
 
+  fields[1][0].id = vdpau->texture[0];
+  fields[1][1].id = vdpau->texture[2];
+  fields[2][0].id = vdpau->texture[1];
+  fields[2][1].id = vdpau->texture[3];
+
   glEnable(m_textureTarget);
   for (int f = 1; f < 3; f++)
   {
     for (int p=0;p<2;p++)
     {
-      if (fields[f][p].flipindex != flipindex && vdpau->SetTexture(p,f))
-      {
-        fields[f][p].id = vdpau->GetTexture();
-        fields[f][p].flipindex = flipindex;
-        glBindTexture(m_textureTarget,fields[f][p].id);
-        glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      glBindTexture(m_textureTarget,fields[f][p].id);
+      glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glBindTexture(m_textureTarget,0);
-        VerifyGLState();
-      }
-      else if (fields[f][p].flipindex != flipindex)
-      {
-        fields[m_currentField][p].id = plane.id;
-        CLog::Log(LOGERROR, "CLinuxRendererGL::UploadVDPAUTexture420 error");
-      }
+      glBindTexture(m_textureTarget,0);
+      VerifyGLState();
     }
     fields[f][2].id = fields[f][1].id;
   }
@@ -3209,9 +3177,9 @@ bool CLinuxRendererGL::Supports(EINTERLACEMETHOD method)
       CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_VDPAU_420)
   {
 #ifdef HAVE_LIBVDPAU
-    CVDPAU *vdpau = m_buffers[m_iYV12RenderBuffer].vdpau;
-    if(vdpau)
-      return vdpau->Supports(method);
+    VDPAU::CVdpauRenderPicture *vdpauPic = m_buffers[m_iYV12RenderBuffer].vdpau;
+    if(vdpauPic && vdpauPic->vdpau)
+      return vdpauPic->vdpau->Supports(method);
 #endif
     return false;
   }
@@ -3296,9 +3264,9 @@ EINTERLACEMETHOD CLinuxRendererGL::AutoInterlaceMethod()
   if(m_renderMethod & RENDER_VDPAU)
   {
 #ifdef HAVE_LIBVDPAU
-    CVDPAU *vdpau = m_buffers[m_iYV12RenderBuffer].vdpau;
-    if(vdpau)
-      return vdpau->AutoInterlaceMethod();
+    VDPAU::CVdpauRenderPicture *vdpauPic = m_buffers[m_iYV12RenderBuffer].vdpau;
+    if(vdpauPic && vdpauPic->vdpau)
+      return vdpauPic->vdpau->AutoInterlaceMethod();
 #endif
     return VS_INTERLACEMETHOD_NONE;
   }
@@ -3344,11 +3312,11 @@ void CLinuxRendererGL::UnBindPbo(YUVBUFFER& buff)
 }
 
 #ifdef HAVE_LIBVDPAU
-void CLinuxRendererGL::AddProcessor(CVDPAU* vdpau)
+void CLinuxRendererGL::AddProcessor(VDPAU::CVdpauRenderPicture *vdpau)
 {
   YUVBUFFER &buf = m_buffers[NextYV12Texture()];
   SAFE_RELEASE(buf.vdpau);
-  buf.vdpau = (CVDPAU*)vdpau->Acquire();
+  buf.vdpau = vdpau->Acquire();
 }
 #endif
 
