@@ -5803,7 +5803,12 @@ msgctxt "#13438"
 msgid "Allow hardware acceleration (amcodec)"
 msgstr ""
 
-#empty strings from id 13439 to 13499
+#: system/settings/settings.xml
+msgctxt "#13439"
+msgid "Allow hardware acceleration (XVBA)"
+msgstr ""
+
+#empty strings from id 13440 to 13499
 
 #: system/settings/settings.xml
 msgctxt "#13500"
@@ -6889,7 +6894,11 @@ msgctxt "#16325"
 msgid "VDPAU - Bob"
 msgstr ""
 
-#empty strings from id 16326 to 16399
+msgctxt "#16326"
+msgid "XVBA"
+msgstr ""
+
+#empty strings from id 16327 to 16399
 
 msgctxt "#16400"
 msgid "Post-processing"
