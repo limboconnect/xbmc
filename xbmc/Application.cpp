@@ -810,6 +810,7 @@ bool CApplication::Create()
   // update the window resolution
 #if defined(HAS_GLX)
   g_Windowing.UpdateResolutions();
+  g_guiSettings.m_LookAndFeelResolution = g_guiSettings.GetResolution();
 #endif
   g_Windowing.SetWindowResolution(g_guiSettings.GetInt("window.width"), g_guiSettings.GetInt("window.height"));
 
