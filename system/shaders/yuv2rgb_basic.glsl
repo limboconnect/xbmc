@@ -32,11 +32,20 @@ varying vec2      m_cordY;
 varying vec2      m_cordU;
 varying vec2      m_cordV;
 
+uniform sampler2D m_sampY2;
+uniform sampler2D m_sampU2;
+uniform sampler2D m_sampV2;
+varying vec2      m_cordY2;
+varying vec2      m_cordU2;
+varying vec2      m_cordV2;
+
 uniform vec2      m_step;
 
 uniform mat4      m_yuvmat;
 
 uniform float     m_stretch;
+
+uniform int       m_weave;
 
 vec2 stretch(vec2 pos)
 {
@@ -73,14 +82,24 @@ void main()
 #elif defined(XBMC_VDPAU_NV12)
 
   vec4 yuv, rgb;
-  yuv.rgba = vec4( texture2D(m_sampY, stretch(m_cordY)).r
-                 , texture2D(m_sampU, stretch(m_cordU)).r
-                 , texture2D(m_sampV, stretch(m_cordV)).g
-                 , 1.0 );
-
+  
+  if (mod(gl_FragCoord.y, 2.0) < 1.0 || (m_weave == 0))
+  {
+    yuv.rgba = vec4( texture2D(m_sampY, stretch(m_cordY)).r
+                   , texture2D(m_sampU, stretch(m_cordU)).r
+                   , texture2D(m_sampV, stretch(m_cordV)).g
+                   , 1.0 );                
+  }
+  else
+  {
+      yuv.rgba = vec4( texture2D(m_sampY2, stretch(m_cordY2)).r
+                   , texture2D(m_sampU2, stretch(m_cordU2)).r
+                   , texture2D(m_sampV2, stretch(m_cordV2)).g
+                   , 1.0 );
+  }
   rgb   = m_yuvmat * yuv;
   rgb.a = gl_Color.a;
-  gl_FragColor = rgb;
+  gl_FragColor = rgb;   
 
 #elif defined(XBMC_YUY2) || defined(XBMC_UYVY)
 

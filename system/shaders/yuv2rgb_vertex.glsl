@@ -22,6 +22,9 @@
 varying vec2 m_cordY;
 varying vec2 m_cordU;
 varying vec2 m_cordV;
+varying vec2 m_cordY2;
+varying vec2 m_cordU2;
+varying vec2 m_cordV2;
 
 void main()
 {
@@ -33,6 +36,9 @@ void main()
   m_cordY = vec2(gl_TextureMatrix[0] * gl_MultiTexCoord0);
   m_cordU = vec2(gl_TextureMatrix[1] * gl_MultiTexCoord1);
   m_cordV = vec2(gl_TextureMatrix[2] * gl_MultiTexCoord2);
+  m_cordY2 = vec2(gl_TextureMatrix[3] * gl_MultiTexCoord3);
+  m_cordU2 = vec2(gl_TextureMatrix[4] * gl_MultiTexCoord4);
+  m_cordV2 = vec2(gl_TextureMatrix[5] * gl_MultiTexCoord5);
 #endif
   gl_Position = ftransform();
   gl_FrontColor = gl_Color;

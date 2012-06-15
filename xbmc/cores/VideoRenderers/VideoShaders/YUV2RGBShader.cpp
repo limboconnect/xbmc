@@ -173,6 +173,7 @@ BaseYUV2RGBGLSLShader::BaseYUV2RGBGLSLShader(bool rect, unsigned flags, ERenderF
   m_hVTex    = -1;
   m_hStretch = -1;
   m_hStep    = -1;
+  m_hWeave   =  0;
 
 #ifdef HAS_GL
   if(rect)
@@ -236,9 +237,13 @@ void BaseYUV2RGBGLSLShader::OnCompiledAndLinked()
   m_hYTex    = glGetUniformLocation(ProgramHandle(), "m_sampY");
   m_hUTex    = glGetUniformLocation(ProgramHandle(), "m_sampU");
   m_hVTex    = glGetUniformLocation(ProgramHandle(), "m_sampV");
+  m_hYTex2   = glGetUniformLocation(ProgramHandle(), "m_sampY2");
+  m_hUTex2   = glGetUniformLocation(ProgramHandle(), "m_sampU2");
+  m_hVTex2   = glGetUniformLocation(ProgramHandle(), "m_sampV2");
   m_hMatrix  = glGetUniformLocation(ProgramHandle(), "m_yuvmat");
   m_hStretch = glGetUniformLocation(ProgramHandle(), "m_stretch");
   m_hStep    = glGetUniformLocation(ProgramHandle(), "m_step");
+  m_hWeave   = glGetUniformLocation(ProgramHandle(), "m_weave");
   VerifyGLState();
 }
 
@@ -248,8 +253,12 @@ bool BaseYUV2RGBGLSLShader::OnEnabled()
   glUniform1i(m_hYTex, 0);
   glUniform1i(m_hUTex, 1);
   glUniform1i(m_hVTex, 2);
+  glUniform1i(m_hYTex2, 3);
+  glUniform1i(m_hUTex2, 4);
+  glUniform1i(m_hVTex2, 5);
   glUniform1f(m_hStretch, m_stretch);
   glUniform2f(m_hStep, 1.0 / m_width, 1.0 / m_height);
+  glUniform1i(m_hWeave, m_weave);
 
   GLfloat matrix[4][4];
   CalculateYUVMatrixGL(matrix, m_flags, m_format, m_black, m_contrast);
@@ -280,6 +289,9 @@ BaseYUV2RGBARBShader::BaseYUV2RGBARBShader(unsigned flags, ERenderFormat format)
   m_hYTex  = -1;
   m_hUTex  = -1;
   m_hVTex  = -1;
+  m_hYTex2  = -1;
+  m_hUTex2  = -1;
+  m_hVTex2  = -1;
 }
 #endif
 

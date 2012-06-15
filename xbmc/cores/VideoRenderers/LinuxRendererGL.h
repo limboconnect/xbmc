@@ -172,7 +172,7 @@ public:
   virtual std::vector<ERenderFormat> SupportedFormats() { return m_formats; }
 
 protected:
-  virtual void Render(DWORD flags, int renderBuffer);
+  virtual void Render(DWORD flags, int renderBuffer, bool weave = false, DWORD flags2 = 0, int renderBuffer2 = 0);
   void         ClearBackBuffer();
   void         DrawBlackBars();
 
@@ -180,7 +180,7 @@ protected:
   virtual void ManageTextures();
   int  NextYV12Texture();
   virtual bool ValidateRenderTarget();
-  virtual void LoadShaders(int field=FIELD_FULL);
+  virtual void LoadShaders();
   void SetTextureFilter(GLenum method);
   void UpdateVideoFilter();
 
@@ -229,8 +229,9 @@ protected:
   void CalculateTextureSourceRects(int source, int num_planes);
 
   // renderers
-  void RenderMultiPass(int renderBuffer, int field);  // multi pass glsl renderer
-  void RenderSinglePass(int renderBuffer, int field); // single pass glsl renderer
+  void RenderMultiPass(int renderBuffer, int field, bool weave, int index, int field2);  // multi pass glsl renderer
+  void RenderSinglePass(int renderBuffer, int field, bool weave, int index2, int field2); // single pass glsl renderer
+  void RenderSinglePassWeave(int index, int field, int index2, int field2);
   void RenderSoftware(int renderBuffer, int field);   // single pass s/w yuv2rgb renderer
   void RenderVDPAU(int renderBuffer, int field);      // render using vdpau hardware
   void RenderVDPAUYV12(int renderBuffer, int field);      // render using vdpau hardware

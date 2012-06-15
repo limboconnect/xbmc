@@ -693,14 +693,7 @@ void CLinuxRendererGL::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
   else if(m_format == RENDER_FMT_VDPAU_420
       && !(flags & (RENDER_FLAG_TOP | RENDER_FLAG_BOT)))
   {
-    glDisable(GL_BLEND);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    Render(flags | RENDER_FLAG_TOP, index);
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(1.0f, 1.0f, 1.0f, 128 / 255.0f);
-    Render(flags | RENDER_FLAG_BOT , index);
+    Render(RENDER_FLAG_TOP, index, true, RENDER_FLAG_BOT, index);
   }
   else
   {
@@ -983,7 +976,7 @@ void CLinuxRendererGL::UpdateVideoFilter()
   m_renderQuality = RQ_SINGLEPASS;
 }
 
-void CLinuxRendererGL::LoadShaders(int field)
+void CLinuxRendererGL::LoadShaders()
 {
   if (m_format == RENDER_FMT_VDPAU)
   {
@@ -1209,7 +1202,7 @@ void CLinuxRendererGL::UnInit()
   m_bConfigured = false;
 }
 
-void CLinuxRendererGL::Render(DWORD flags, int renderBuffer)
+void CLinuxRendererGL::Render(DWORD flags, int renderBuffer, bool weave /*= false*/, DWORD flags2 /*= 0*/, int renderBuffer2 /*= 0*/)
 {
   // obtain current field, if interlaced
   if( flags & RENDER_FLAG_TOP)
@@ -1220,6 +1213,15 @@ void CLinuxRendererGL::Render(DWORD flags, int renderBuffer)
 
   else
     m_currentField = FIELD_FULL;
+
+  int field2;
+  if (weave)
+  {
+    if (flags2 & RENDER_FLAG_TOP)
+      field2 = FIELD_TOP;
+    else
+      field2 = FIELD_BOT;
+  }
 
   // call texture load function
   m_skipRender = false;
@@ -1234,19 +1236,22 @@ void CLinuxRendererGL::Render(DWORD flags, int renderBuffer)
     {
     case RQ_LOW:
     case RQ_SINGLEPASS:
-      RenderSinglePass(renderBuffer, m_currentField);
+      if (weave)
+        RenderSinglePassWeave(renderBuffer, m_currentField, renderBuffer2, field2);
+      else
+        RenderSinglePass(renderBuffer, m_currentField, false, renderBuffer2, field2);
       VerifyGLState();
       break;
 
     case RQ_MULTIPASS:
-      RenderMultiPass(renderBuffer, m_currentField);
+      RenderMultiPass(renderBuffer, m_currentField, weave, renderBuffer2, field2);
       VerifyGLState();
       break;
     }
   }
   else if (m_renderMethod & RENDER_ARB)
   {
-    RenderSinglePass(renderBuffer, m_currentField);
+    RenderSinglePass(renderBuffer, m_currentField, false, 0, 0);
   }
 #ifdef HAVE_LIBVDPAU
   else if (m_renderMethod & RENDER_VDPAU)
@@ -1277,15 +1282,18 @@ void CLinuxRendererGL::Render(DWORD flags, int renderBuffer)
   }
 }
 
-void CLinuxRendererGL::RenderSinglePass(int index, int field)
+void CLinuxRendererGL::RenderSinglePass(int index, int field, bool weave, int index2, int field2)
 {
   YUVFIELDS &fields = m_buffers[index].fields;
   YUVPLANES &planes = fields[field];
 
+  YUVFIELDS &fields2 = m_buffers[index2].fields;
+  YUVPLANES &planes2 = fields2[field2];
+
   if (m_reloadShaders)
   {
     m_reloadShaders = 0;
-    LoadShaders(field);
+    LoadShaders();
   }
 
   glDisable(GL_DEPTH_TEST);
@@ -1304,6 +1312,24 @@ void CLinuxRendererGL::RenderSinglePass(int index, int field)
   glActiveTextureARB(GL_TEXTURE2);
   glEnable(m_textureTarget);
   glBindTexture(m_textureTarget, planes[2].id);
+
+  if (weave)
+  {
+    // Y2
+    glActiveTextureARB(GL_TEXTURE3);
+    glEnable(m_textureTarget);
+    glBindTexture(m_textureTarget, planes2[0].id);
+
+    // U2
+    glActiveTextureARB(GL_TEXTURE4);
+    glEnable(m_textureTarget);
+    glBindTexture(m_textureTarget, planes2[1].id);
+
+    // V2
+    glActiveTextureARB(GL_TEXTURE5);
+    glEnable(m_textureTarget);
+    glBindTexture(m_textureTarget, planes2[2].id);
+  }
 
   glActiveTextureARB(GL_TEXTURE0);
   VerifyGLState();
@@ -1320,10 +1346,16 @@ void CLinuxRendererGL::RenderSinglePass(int index, int field)
   else
     m_pYUVShader->SetNonLinStretch(pow(g_settings.m_fPixelRatio, g_advancedSettings.m_videoNonLinStretchRatio));
 
-  if     (field == FIELD_TOP)
-    m_pYUVShader->SetField(1);
-  else if(field == FIELD_BOT)
-    m_pYUVShader->SetField(0);
+  if (!weave)
+  {
+    if     (field == FIELD_TOP)
+      m_pYUVShader->SetField(1);
+    else if(field == FIELD_BOT)
+      m_pYUVShader->SetField(0);
+    m_pYUVShader->SetWeave(0);
+  }
+  else
+    m_pYUVShader->SetWeave(1);
 
   m_pYUVShader->Enable();
 
@@ -1332,21 +1364,45 @@ void CLinuxRendererGL::RenderSinglePass(int index, int field)
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x1, planes[0].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x1, planes[1].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x1, planes[2].rect.y1);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x1, planes2[0].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x1, planes2[1].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x1, planes2[2].rect.y1);
+  }
   glVertex4f(m_destRect.x1, m_destRect.y1, 0, 1.0f );
 
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x2, planes[0].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x2, planes[1].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x2, planes[2].rect.y1);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x2, planes2[0].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x2, planes2[1].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x2, planes2[2].rect.y1);
+  }
   glVertex4f(m_destRect.x2, m_destRect.y1, 0, 1.0f);
 
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x2, planes[0].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x2, planes[1].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x2, planes[2].rect.y2);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x2, planes2[0].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x2, planes2[1].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x2, planes2[2].rect.y2);
+  }
   glVertex4f(m_destRect.x2, m_destRect.y2, 0, 1.0f);
 
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x1, planes[0].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x1, planes[1].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x1, planes[2].rect.y2);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x1, planes2[0].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x1, planes2[1].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x1, planes2[2].rect.y2);
+  }
   glVertex4f(m_destRect.x1, m_destRect.y2, 0, 1.0f);
 
   glEnd();
@@ -1354,6 +1410,18 @@ void CLinuxRendererGL::RenderSinglePass(int index, int field)
 
   m_pYUVShader->Disable();
   VerifyGLState();
+
+  if (weave)
+  {
+    glActiveTextureARB(GL_TEXTURE4);
+    glDisable(m_textureTarget);
+
+    glActiveTextureARB(GL_TEXTURE5);
+    glDisable(m_textureTarget);
+
+    glActiveTextureARB(GL_TEXTURE3);
+    glDisable(m_textureTarget);
+  }
 
   glActiveTextureARB(GL_TEXTURE1);
   glDisable(m_textureTarget);
@@ -1369,21 +1437,51 @@ void CLinuxRendererGL::RenderSinglePass(int index, int field)
   VerifyGLState();
 }
 
-void CLinuxRendererGL::RenderMultiPass(int index, int field)
+void CLinuxRendererGL::RenderSinglePassWeave(int index, int field, int index2, int field2)
 {
-  YUVPLANES &planes = m_buffers[index].fields[field];
+  bool scaleUp = (int)m_sourceHeight < g_graphicsContext.GetHeight() && (int)m_sourceWidth < g_graphicsContext.GetWidth();
+  if (!scaleUp)
+  {
+    RenderSinglePass(index, field, true, index2, field2);
+    return;
+  }
+
+  if (!m_fbo.Initialize())
+  {
+    CLog::Log(LOGERROR, "GL: Error initializing FBO");
+    return;
+  }
+
+  if (!m_fbo.CreateAndBindToTexture(GL_TEXTURE_2D, m_sourceWidth, m_sourceHeight, GL_RGBA))
+  {
+    CLog::Log(LOGERROR, "GL: Error creating texture and binding to FBO");
+    return;
+  }
 
   if (m_reloadShaders)
   {
     m_reloadShaders = 0;
-    LoadShaders(m_currentField);
+    LoadShaders();
   }
+
+  if (!m_pVideoFilterShader)
+  {
+    m_pVideoFilterShader = new StretchFilterShader();
+    if (!m_pVideoFilterShader->CompileAndLink())
+    {
+      CLog::Log(LOGERROR, "GL: Error compiling and linking video filter shader");
+      return;
+    }
+  }
+
+  YUVPLANES &planes = m_buffers[index].fields[field];
+  YUVPLANES &planes2 = m_buffers[index2].fields[field2];
 
   glDisable(GL_DEPTH_TEST);
 
   // Y
-  glEnable(m_textureTarget);
   glActiveTextureARB(GL_TEXTURE0);
+  glEnable(m_textureTarget);
   glBindTexture(m_textureTarget, planes[0].id);
   VerifyGLState();
 
@@ -1397,6 +1495,24 @@ void CLinuxRendererGL::RenderMultiPass(int index, int field)
   glActiveTextureARB(GL_TEXTURE2);
   glEnable(m_textureTarget);
   glBindTexture(m_textureTarget, planes[2].id);
+  VerifyGLState();
+
+  // Y2
+  glActiveTextureARB(GL_TEXTURE3);
+  glEnable(m_textureTarget);
+  glBindTexture(m_textureTarget, planes2[0].id);
+  VerifyGLState();
+
+  // U2
+  glActiveTextureARB(GL_TEXTURE4);
+  glEnable(m_textureTarget);
+  glBindTexture(m_textureTarget, planes2[1].id);
+  VerifyGLState();
+
+  // V2
+  glActiveTextureARB(GL_TEXTURE5);
+  glEnable(m_textureTarget);
+  glBindTexture(m_textureTarget, planes2[2].id);
   VerifyGLState();
 
   glActiveTextureARB(GL_TEXTURE0);
@@ -1417,10 +1533,250 @@ void CLinuxRendererGL::RenderMultiPass(int index, int field)
   m_pYUVShader->SetWidth(planes[0].texwidth);
   m_pYUVShader->SetHeight(planes[0].texheight);
   m_pYUVShader->SetNonLinStretch(1.0);
-  if     (field == FIELD_TOP)
-    m_pYUVShader->SetField(1);
-  else if(field == FIELD_BOT)
-    m_pYUVShader->SetField(0);
+  m_pYUVShader->SetWeave(1);
+
+  VerifyGLState();
+
+  glPushAttrib(GL_VIEWPORT_BIT);
+  glPushAttrib(GL_SCISSOR_BIT);
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix();
+  glLoadIdentity();
+  VerifyGLState();
+
+  glMatrixMode(GL_PROJECTION);
+  glPushMatrix();
+  glLoadIdentity();
+  VerifyGLState();
+  gluOrtho2D(0, m_sourceWidth, 0, m_sourceHeight);
+  glViewport(0, 0, m_sourceWidth, m_sourceHeight);
+  glScissor (0, 0, m_sourceWidth, m_sourceHeight);
+  glMatrixMode(GL_MODELVIEW);
+  VerifyGLState();
+
+  if (!m_pYUVShader->Enable())
+  {
+    CLog::Log(LOGERROR, "GL: Error enabling YUV shader");
+  }
+
+  float imgwidth  = planes[0].rect.x2 - planes[0].rect.x1;
+  float imgheight = planes[0].rect.y2 - planes[0].rect.y1;
+  if (m_textureTarget == GL_TEXTURE_2D)
+  {
+    imgwidth  *= planes[0].texwidth;
+    imgheight *= planes[0].texheight;
+  }
+  imgwidth  *= planes[0].pixpertex_x;
+  imgheight *= planes[0].pixpertex_y;
+
+  // 1st Pass to video frame size
+  glBegin(GL_QUADS);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x1, planes[0].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x1, planes[1].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x1, planes[2].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x1, planes2[0].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x1, planes2[1].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x1, planes2[2].rect.y1);
+  glVertex2f(0.0f    , 0.0f);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x2, planes[0].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x2, planes[1].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x2, planes[2].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x2, planes2[0].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x2, planes2[1].rect.y1);
+  glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x2, planes2[2].rect.y1);
+  glVertex2f(imgwidth, 0.0f);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x2, planes[0].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x2, planes[1].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x2, planes[2].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x2, planes2[0].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x2, planes2[1].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x2, planes2[2].rect.y2);
+  glVertex2f(imgwidth, imgheight);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x1, planes[0].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x1, planes[1].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x1, planes[2].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x1, planes2[0].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x1, planes2[1].rect.y2);
+  glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x1, planes2[2].rect.y2);
+  glVertex2f(0.0f    , imgheight);
+
+  glEnd();
+  VerifyGLState();
+
+  m_pYUVShader->Disable();
+
+  glMatrixMode(GL_MODELVIEW);
+  glPopMatrix(); // pop modelview
+  glMatrixMode(GL_PROJECTION);
+  glPopMatrix(); // pop projection
+  glPopAttrib(); // pop scissor
+  glPopAttrib(); // pop viewport
+  glMatrixMode(GL_MODELVIEW);
+  VerifyGLState();
+
+  m_fbo.EndRender();
+
+  glActiveTextureARB(GL_TEXTURE4);
+  glDisable(m_textureTarget);
+  glActiveTextureARB(GL_TEXTURE5);
+  glDisable(m_textureTarget);
+  glActiveTextureARB(GL_TEXTURE3);
+  glDisable(m_textureTarget);
+
+  glActiveTextureARB(GL_TEXTURE1);
+  glDisable(m_textureTarget);
+  glActiveTextureARB(GL_TEXTURE2);
+  glDisable(m_textureTarget);
+  glActiveTextureARB(GL_TEXTURE0);
+  glDisable(m_textureTarget);
+
+  glEnable(GL_TEXTURE_2D);
+  glBindTexture(GL_TEXTURE_2D, m_fbo.Texture());
+  VerifyGLState();
+
+  if (m_pVideoFilterShader)
+  {
+    GLint filter;
+    if (!m_pVideoFilterShader->GetTextureFilter(filter))
+      filter = m_scalingMethod == VS_SCALINGMETHOD_NEAREST ? GL_NEAREST : GL_LINEAR;
+
+    m_fbo.SetFiltering(GL_TEXTURE_2D, filter);
+    m_pVideoFilterShader->SetSourceTexture(0);
+    m_pVideoFilterShader->SetWidth(m_sourceWidth);
+    m_pVideoFilterShader->SetHeight(m_sourceHeight);
+
+    //disable non-linear stretch when a dvd menu is shown, parts of the menu are rendered through the overlay renderer
+    //having non-linear stretch on breaks the alignment
+    if (g_application.m_pPlayer && g_application.m_pPlayer->IsInMenu())
+      m_pVideoFilterShader->SetNonLinStretch(1.0);
+    else
+      m_pVideoFilterShader->SetNonLinStretch(pow(g_settings.m_fPixelRatio, g_advancedSettings.m_videoNonLinStretchRatio));
+
+    m_pVideoFilterShader->Enable();
+  }
+  else
+  {
+    GLint filter = m_scalingMethod == VS_SCALINGMETHOD_NEAREST ? GL_NEAREST : GL_LINEAR;
+    m_fbo.SetFiltering(GL_TEXTURE_2D, filter);
+  }
+
+  VerifyGLState();
+
+  imgwidth  /= m_sourceWidth;
+  imgheight /= m_sourceHeight;
+
+  glBegin(GL_QUADS);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, 0.0f    , 0.0f);
+  glVertex4f(m_destRect.x1, m_destRect.y1, 0, 1.0f );
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, imgwidth, 0.0f);
+  glVertex4f(m_destRect.x2, m_destRect.y1, 0, 1.0f);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, imgwidth, imgheight);
+  glVertex4f(m_destRect.x2, m_destRect.y2, 0, 1.0f);
+
+  glMultiTexCoord2fARB(GL_TEXTURE0, 0.0f    , imgheight);
+  glVertex4f(m_destRect.x1, m_destRect.y2, 0, 1.0f);
+
+  glEnd();
+
+  VerifyGLState();
+
+  if (m_pVideoFilterShader)
+    m_pVideoFilterShader->Disable();
+
+  VerifyGLState();
+
+  glDisable(m_textureTarget);
+  VerifyGLState();
+}
+
+void CLinuxRendererGL::RenderMultiPass(int index, int field, bool weave, int index2, int field2)
+{
+  YUVPLANES &planes = m_buffers[index].fields[field];
+  YUVPLANES &planes2 = m_buffers[index2].fields[field2];
+
+  if (m_reloadShaders)
+  {
+    m_reloadShaders = 0;
+    LoadShaders();
+  }
+
+  glDisable(GL_DEPTH_TEST);
+
+  // Y
+  glEnable(m_textureTarget);
+  glActiveTextureARB(GL_TEXTURE0);
+  glBindTexture(m_textureTarget, planes[0].id);
+  VerifyGLState();
+
+  // U
+  glActiveTextureARB(GL_TEXTURE1);
+  glEnable(m_textureTarget);
+  glBindTexture(m_textureTarget, planes[1].id);
+  VerifyGLState();
+
+  // V
+  glActiveTextureARB(GL_TEXTURE2);
+  glEnable(m_textureTarget);
+  glBindTexture(m_textureTarget, planes[2].id);
+  VerifyGLState();
+
+  if (weave)
+  {
+    // Y2
+    glActiveTextureARB(GL_TEXTURE3);
+    glEnable(m_textureTarget);
+    glBindTexture(m_textureTarget, planes2[0].id);
+    VerifyGLState();
+
+    // U2
+    glActiveTextureARB(GL_TEXTURE4);
+    glEnable(m_textureTarget);
+    glBindTexture(m_textureTarget, planes2[1].id);
+    VerifyGLState();
+
+    // V2
+    glActiveTextureARB(GL_TEXTURE5);
+    glEnable(m_textureTarget);
+    glBindTexture(m_textureTarget, planes2[2].id);
+    VerifyGLState();
+  }
+
+  glActiveTextureARB(GL_TEXTURE0);
+  VerifyGLState();
+
+  // make sure the yuv shader is loaded and ready to go
+  if (!m_pYUVShader || (!m_pYUVShader->OK()))
+  {
+    CLog::Log(LOGERROR, "GL: YUV shader not active, cannot do multipass render");
+    return;
+  }
+
+  m_fbo.BeginRender();
+  VerifyGLState();
+
+  m_pYUVShader->SetBlack(g_settings.m_currentVideoSettings.m_Brightness * 0.01f - 0.5f);
+  m_pYUVShader->SetContrast(g_settings.m_currentVideoSettings.m_Contrast * 0.02f);
+  m_pYUVShader->SetWidth(planes[0].texwidth);
+  m_pYUVShader->SetHeight(planes[0].texheight);
+  m_pYUVShader->SetNonLinStretch(1.0);
+
+  if (!weave)
+  {
+    if     (field == FIELD_TOP)
+      m_pYUVShader->SetField(1);
+    else if(field == FIELD_BOT)
+      m_pYUVShader->SetField(0);
+    m_pYUVShader->SetWeave(0);
+  }
+  else
+    m_pYUVShader->SetWeave(1);
 
   VerifyGLState();
 
@@ -1463,21 +1819,46 @@ void CLinuxRendererGL::RenderMultiPass(int index, int field)
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x1, planes[0].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x1, planes[1].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x1, planes[2].rect.y1);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x1, planes2[0].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x1, planes2[1].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x1, planes2[2].rect.y1);
+  }
+
   glVertex2f(0.0f    , 0.0f);
 
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x2, planes[0].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x2, planes[1].rect.y1);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x2, planes[2].rect.y1);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x2, planes2[0].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x2, planes2[1].rect.y1);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x2, planes2[2].rect.y1);
+  }
   glVertex2f(imgwidth, 0.0f);
 
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x2, planes[0].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x2, planes[1].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x2, planes[2].rect.y2);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x2, planes2[0].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x2, planes2[1].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x2, planes2[2].rect.y2);
+  }
   glVertex2f(imgwidth, imgheight);
 
   glMultiTexCoord2fARB(GL_TEXTURE0, planes[0].rect.x1, planes[0].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE1, planes[1].rect.x1, planes[1].rect.y2);
   glMultiTexCoord2fARB(GL_TEXTURE2, planes[2].rect.x1, planes[2].rect.y2);
+  if (weave)
+  {
+    glMultiTexCoord2fARB(GL_TEXTURE3, planes2[0].rect.x1, planes2[0].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE4, planes2[1].rect.x1, planes2[1].rect.y2);
+    glMultiTexCoord2fARB(GL_TEXTURE5, planes2[2].rect.x1, planes2[2].rect.y2);
+  }
   glVertex2f(0.0f    , imgheight);
 
   glEnd();
@@ -1495,6 +1876,16 @@ void CLinuxRendererGL::RenderMultiPass(int index, int field)
   VerifyGLState();
 
   m_fbo.EndRender();
+
+  if (weave)
+  {
+    glActiveTextureARB(GL_TEXTURE4);
+    glDisable(m_textureTarget);
+    glActiveTextureARB(GL_TEXTURE5);
+    glDisable(m_textureTarget);
+    glActiveTextureARB(GL_TEXTURE3);
+    glDisable(m_textureTarget);
+  }
 
   glActiveTextureARB(GL_TEXTURE1);
   glDisable(m_textureTarget);

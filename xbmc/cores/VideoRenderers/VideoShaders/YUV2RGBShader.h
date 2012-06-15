@@ -54,6 +54,7 @@ namespace Shaders {
     virtual void SetBlack(float black)          {};
     virtual void SetContrast(float contrast)    {};
     virtual void SetNonLinStretch(float stretch){};
+    virtual void SetWeave(int weave){};
 #if HAS_GLES == 2
     virtual GLint GetVertexLoc() { return 0; };
     virtual GLint GetYcoordLoc() { return 0; };
@@ -80,6 +81,7 @@ namespace Shaders {
     virtual void SetBlack(float black)           { m_black    = black; }
     virtual void SetContrast(float contrast)     { m_contrast = contrast; }
     virtual void SetNonLinStretch(float stretch) { m_stretch = stretch; }
+    virtual void SetWeave(int weave)             { m_weave = weave; }
 #if HAS_GLES == 2
     virtual GLint GetVertexLoc() { return m_hVertex; }
     virtual GLint GetYcoordLoc() { return m_hYcoord; }
@@ -103,6 +105,7 @@ namespace Shaders {
     float m_black;
     float m_contrast;
     float m_stretch;
+    int   m_weave;
 
     string m_defines;
 
@@ -110,9 +113,13 @@ namespace Shaders {
     GLint m_hYTex;
     GLint m_hUTex;
     GLint m_hVTex;
+    GLint m_hYTex2;
+    GLint m_hUTex2;
+    GLint m_hVTex2;
     GLint m_hMatrix;
     GLint m_hStretch;
     GLint m_hStep;
+    GLint m_hWeave;
 #if HAS_GLES == 2
     GLint m_hVertex;
     GLint m_hYcoord;
@@ -157,6 +164,9 @@ namespace Shaders {
     GLint m_hYTex;
     GLint m_hUTex;
     GLint m_hVTex;
+    GLint m_hYTex2;
+    GLint m_hUTex2;
+    GLint m_hVTex2;
   };
 
   class YUV2RGBProgressiveShaderARB : public BaseYUV2RGBARBShader
