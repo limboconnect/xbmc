@@ -372,6 +372,8 @@ typedef struct VC1Context{
     int frfd, brfd;         ///< reference frame distance (forward or backward)
     int first_pic_header_flag;
     int pic_header_flag;
+    int mbmodetab;
+    int imvtab;
 
     /** Frame decoding info for sprite modes */
     //@{

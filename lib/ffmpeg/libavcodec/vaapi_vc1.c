@@ -87,6 +87,25 @@ static inline int vc1_has_OVERFLAGS_bitplane(VC1Context *v)
            v->condover == CONDOVER_SELECT;
 }
 
+/** Check whether the FIELDTX bitplane is present */
+static inline int vc1_has_FIELDTX_bitplane(VC1Context *v)
+{
+    if (v->fieldtx_is_raw || !v->interlace)
+        return 0;
+    return v->profile == PROFILE_ADVANCED &&
+           (v->s.pict_type == AV_PICTURE_TYPE_I ||
+            (v->s.pict_type == AV_PICTURE_TYPE_B && v->bi_type));
+}
+
+/** Check whether the FORWARDMB bitplane is present */
+static inline int vc1_has_FORWARDMB_bitplane(VC1Context *v)
+{
+    if (v->fmb_is_raw || !v->interlace)
+        return 0;
+    return v->profile == PROFILE_ADVANCED &&
+           (v->s.pict_type == AV_PICTURE_TYPE_B && !v->bi_type);
+}
+
 /** Reconstruct bitstream PTYPE (7.1.1.4, index into Table-35) */
 static int vc1_get_PTYPE(VC1Context *v)
 {
@@ -190,8 +209,11 @@ static int vaapi_vc1_start_frame(AVCodecContext *avctx, av_unused const uint8_t 
     pic_param->range_mapping_fields.bits.chroma_flag                = v->range_mapuv_flag;
     pic_param->range_mapping_fields.bits.chroma                     = v->range_mapuv;
     pic_param->b_picture_fraction                                   = v->bfraction_lut_index;
-    pic_param->cbp_table                                            = v->cbpcy_vlc ? v->cbpcy_vlc - ff_vc1_cbpcy_p_vlc : 0;
-    pic_param->mb_mode_table                                        = 0; /* XXX: interlaced frame */
+    if (!v->interlace)
+      pic_param->cbp_table                                          = v->cbpcy_vlc ? v->cbpcy_vlc - ff_vc1_cbpcy_p_vlc : 0;
+    else
+      pic_param->cbp_table                                          = v->cbpcy_vlc ? v->cbpcy_vlc - ff_vc1_icbpcy_vlc : 0;
+    pic_param->mb_mode_table                                        = v->mbmodetab;
     pic_param->range_reduction_frame                                = v->rangeredfrm;
     pic_param->rounding_control                                     = v->rnd;
     pic_param->post_processing                                      = v->postproc;
@@ -202,40 +224,40 @@ static int vaapi_vc1_start_frame(AVCodecContext *avctx, av_unused const uint8_t 
     pic_param->picture_fields.bits.picture_type                     = vc1_get_PTYPE(v);
     pic_param->picture_fields.bits.frame_coding_mode                = v->fcm;
     pic_param->picture_fields.bits.top_field_first                  = v->tff;
-    pic_param->picture_fields.bits.is_first_field                   = v->fcm == 0; /* XXX: interlaced frame */
+    pic_param->picture_fields.bits.is_first_field                   = !v->interlace || !v->second_field;
     pic_param->picture_fields.bits.intensity_compensation           = v->mv_mode == MV_PMODE_INTENSITY_COMP;
     pic_param->raw_coding.value                                     = 0; /* reset all bits */
     pic_param->raw_coding.flags.mv_type_mb                          = v->mv_type_is_raw;
     pic_param->raw_coding.flags.direct_mb                           = v->dmb_is_raw;
     pic_param->raw_coding.flags.skip_mb                             = v->skip_is_raw;
-    pic_param->raw_coding.flags.field_tx                            = 0; /* XXX: interlaced frame */
-    pic_param->raw_coding.flags.forward_mb                          = 0; /* XXX: interlaced frame */
+    pic_param->raw_coding.flags.field_tx                            = v->interlace && v->fieldtx_is_raw;
+    pic_param->raw_coding.flags.forward_mb                          = v->interlace && v->fmb_is_raw;
     pic_param->raw_coding.flags.ac_pred                             = v->acpred_is_raw;
     pic_param->raw_coding.flags.overflags                           = v->overflg_is_raw;
     pic_param->bitplane_present.value                               = 0; /* reset all bits */
     pic_param->bitplane_present.flags.bp_mv_type_mb                 = vc1_has_MVTYPEMB_bitplane(v);
     pic_param->bitplane_present.flags.bp_direct_mb                  = vc1_has_DIRECTMB_bitplane(v);
     pic_param->bitplane_present.flags.bp_skip_mb                    = vc1_has_SKIPMB_bitplane(v);
-    pic_param->bitplane_present.flags.bp_field_tx                   = 0; /* XXX: interlaced frame */
-    pic_param->bitplane_present.flags.bp_forward_mb                 = 0; /* XXX: interlaced frame */
+    pic_param->bitplane_present.flags.bp_field_tx                   = vc1_has_FIELDTX_bitplane(v);
+    pic_param->bitplane_present.flags.bp_forward_mb                 = vc1_has_FORWARDMB_bitplane(v);
     pic_param->bitplane_present.flags.bp_ac_pred                    = vc1_has_ACPRED_bitplane(v);
     pic_param->bitplane_present.flags.bp_overflags                  = vc1_has_OVERFLAGS_bitplane(v);
     pic_param->reference_fields.value                               = 0; /* reset all bits */
     pic_param->reference_fields.bits.reference_distance_flag        = v->refdist_flag;
-    pic_param->reference_fields.bits.reference_distance             = 0; /* XXX: interlaced frame */
-    pic_param->reference_fields.bits.num_reference_pictures         = 0; /* XXX: interlaced frame */
-    pic_param->reference_fields.bits.reference_field_pic_indicator  = 0; /* XXX: interlaced frame */
+    pic_param->reference_fields.bits.reference_distance             = v->refdist;
+    pic_param->reference_fields.bits.num_reference_pictures         = v->numref;
+    pic_param->reference_fields.bits.reference_field_pic_indicator  = v->reffield;
     pic_param->mv_fields.value                                      = 0; /* reset all bits */
     pic_param->mv_fields.bits.mv_mode                               = vc1_get_MVMODE(v);
     pic_param->mv_fields.bits.mv_mode2                              = vc1_get_MVMODE2(v);
-    pic_param->mv_fields.bits.mv_table                              = s->mv_table_index;
-    pic_param->mv_fields.bits.two_mv_block_pattern_table            = 0; /* XXX: interlaced frame */
-    pic_param->mv_fields.bits.four_mv_switch                        = 0; /* XXX: interlaced frame */
-    pic_param->mv_fields.bits.four_mv_block_pattern_table           = 0; /* XXX: interlaced frame */
+    pic_param->mv_fields.bits.mv_table                              = !v->interlace ? s->mv_table_index : v->imvtab;
+    pic_param->mv_fields.bits.two_mv_block_pattern_table            = v->twomvbp_vlc ? v->twomvbp_vlc - ff_vc1_2mv_block_pattern_vlc : 0;
+    pic_param->mv_fields.bits.four_mv_switch                        = v->fourmvswitch;
+    pic_param->mv_fields.bits.four_mv_block_pattern_table           = v->fourmvbp_vlc ? v->fourmvbp_vlc - ff_vc1_4mv_block_pattern_vlc : 0;
     pic_param->mv_fields.bits.extended_mv_flag                      = v->extended_mv;
     pic_param->mv_fields.bits.extended_mv_range                     = v->mvrange;
     pic_param->mv_fields.bits.extended_dmv_flag                     = v->extended_dmv;
-    pic_param->mv_fields.bits.extended_dmv_range                    = 0; /* XXX: interlaced frame */
+    pic_param->mv_fields.bits.extended_dmv_range                    = v->dmvrange;
     pic_param->pic_quantizer_fields.value                           = 0; /* reset all bits */
     pic_param->pic_quantizer_fields.bits.dquant                     = v->dquant;
     pic_param->pic_quantizer_fields.bits.quantizer                  = v->quantizer_mode;
@@ -280,12 +302,12 @@ static int vaapi_vc1_start_frame(AVCodecContext *avctx, av_unused const uint8_t 
             if (!v->bi_type) {
                 ff_bp[0] = pic_param->bitplane_present.flags.bp_direct_mb ? v->direct_mb_plane : NULL;
                 ff_bp[1] = pic_param->bitplane_present.flags.bp_skip_mb   ? s->mbskip_table    : NULL;
-                ff_bp[2] = NULL; /* XXX: interlaced frame (FORWARD plane) */
+                ff_bp[2] = pic_param->bitplane_present.flags.bp_forward_mb ? v->forward_mb_plane : NULL;
                 break;
             }
             /* fall-through (BI-type) */
         case AV_PICTURE_TYPE_I:
-            ff_bp[0] = NULL; /* XXX: interlaced frame (FIELDTX plane) */
+            ff_bp[0] = pic_param->bitplane_present.flags.bp_field_tx   ? v->fieldtx_plane      : NULL;
             ff_bp[1] = pic_param->bitplane_present.flags.bp_ac_pred    ? v->acpred_plane       : NULL;
             ff_bp[2] = pic_param->bitplane_present.flags.bp_overflags  ? v->over_flags_plane   : NULL;
             break;
