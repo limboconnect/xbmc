@@ -28,6 +28,7 @@
 #include "cores/AudioEngine/Interfaces/AESound.h"
 #include "cores/AudioEngine/AEFactory.h"
 #include "guilib/DispResource.h"
+#include "guilib/D3DResource.h"
 #include <queue>
 
 // ffmpeg
@@ -185,6 +186,8 @@ protected:
 
 #if defined(HAS_GLX) || defined(TARGET_DARWIN)
 class CActiveAE : public IAE, public IDispResource, private CThread
+#elif defined(TARGET_WINDOWS)
+class CActiveAE : public IAE, public ID3DResource, private CThread
 #else
 class CActiveAE : public IAE, private CThread
 #endif
@@ -236,6 +239,8 @@ public:
 
   virtual void OnLostDevice();
   virtual void OnResetDevice();
+  virtual void OnDestroyDevice() {};
+  virtual void OnCreateDevice() {};
   virtual void OnAppFocusChange(bool focus);
 
 protected:
