@@ -167,6 +167,8 @@ protected:
   virtual bool UpdateResolutionsInternal();
   virtual bool CreateBlankWindows();
   virtual bool BlankNonActiveMonitors(bool bBlank);
+  virtual void StartChangeDispSettings() {};
+  virtual void FinishChangeDispSettings() {};
   const MONITOR_DETAILS &GetMonitor(int screen) const;
   void RestoreDesktopResolution(int screen);
   RECT ScreenRect(int screen);

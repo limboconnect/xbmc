@@ -466,7 +466,9 @@ bool CWinSystemWin32::ChangeResolution(RESOLUTION_INFO res)
 
     // CDS_FULLSCREEN is for temporary fullscreen mode and prevents icons and windows from moving
     // to fit within the new dimensions of the desktop
+    StartChangeDispSettings();
     LONG rc = ChangeDisplaySettingsExW(details.DeviceNameW.c_str(), &sDevMode, NULL, CDS_FULLSCREEN, NULL);
+    FinishChangeDispSettings();
     if (rc != DISP_CHANGE_SUCCESSFUL)
     {
       CLog::Log(LOGERROR, "%s : ChangeDisplaySettingsEx failed with %d", __FUNCTION__, rc);
