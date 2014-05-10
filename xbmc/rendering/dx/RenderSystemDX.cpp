@@ -666,28 +666,25 @@ bool CRenderSystemDX::BeginRender()
     m_nDeviceStatus = m_pD3DDevice->TestCooperativeLevel();
   }
 
-  if( FAILED( m_nDeviceStatus ) )
+  // The device has been lost but cannot be reset at this time.
+  // Therefore, rendering is not possible and we'll have to return
+  // and try again at a later time.
+  if( m_nDeviceStatus == D3DERR_DEVICELOST )
   {
-    // The device has been lost but cannot be reset at this time.
-    // Therefore, rendering is not possible and we'll have to return
-    // and try again at a later time.
-    if( m_nDeviceStatus == D3DERR_DEVICELOST )
-    {
-      if (m_nDeviceStatus != oldStatus)
-        CLog::Log(LOGDEBUG, "D3DERR_DEVICELOST");
-      OnDeviceLost();
-      return false;
-    }
+    if (m_nDeviceStatus != oldStatus)
+      CLog::Log(LOGDEBUG, "D3DERR_DEVICELOST");
+    OnDeviceLost();
+    return false;
+  }
 
-    // The device has been lost but it can be reset at this time.
-    if( m_nDeviceStatus == D3DERR_DEVICENOTRESET )
+  // The device has been lost but it can be reset at this time.
+  if( m_nDeviceStatus == D3DERR_DEVICENOTRESET )
+  {
+    OnDeviceReset();
+    if( FAILED(m_nDeviceStatus ) )
     {
-      OnDeviceReset();
-      if( FAILED(m_nDeviceStatus ) )
-      {
-        CLog::Log(LOGINFO, "m_pD3DDevice->Reset failed");
-        return false;
-      }
+      CLog::Log(LOGINFO, "m_pD3DDevice->Reset failed");
+      return false;
     }
   }
 
