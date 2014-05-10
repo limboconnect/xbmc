@@ -1238,10 +1238,11 @@ initialize:
 
   m_sinkLatency = hnsLatency * 0.0000002;
 
-  CLog::Log(LOGINFO, __FUNCTION__": WASAPI Exclusive Mode Sink Initialized using: %s, %d, %d",
+  CLog::Log(LOGINFO, __FUNCTION__": WASAPI Exclusive Mode Sink Initialized using: %s, %d, %d, sink latency: %.2f",
                                      CAEUtil::DataFormatToStr(format.m_dataFormat),
                                      wfxex.Format.nSamplesPerSec,
-                                     wfxex.Format.nChannels);
+                                     wfxex.Format.nChannels,
+                                     m_sinkLatency);
   return true;
 }
 
