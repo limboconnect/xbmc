@@ -56,24 +56,6 @@ extern "C" {
 #include "libavutil/opt.h"
 }
 
-struct StereoModeConversionMap
-{
-  const char*          name;
-  const char*          mode;
-};
-
-// we internally use the matroska string representation of stereoscopic modes.
-// This struct is a conversion map to convert stereoscopic mode values
-// from asf/wmv to the internally used matroska ones
-static const struct StereoModeConversionMap WmvToInternalStereoModeMap[] =
-{
-  { "SideBySideRF",             "right_left" },
-  { "SideBySideLF",             "left_right" },
-  { "OverUnderRT",              "bottom_top" },
-  { "OverUnderLT",              "top_bottom" },
-  {}
-};
-
 #define FF_MAX_EXTRADATA_SIZE ((1 << 28) - FF_INPUT_BUFFER_PADDING_SIZE)
 
 void CDemuxStreamAudioFFmpeg::GetStreamInfo(std::string& strInfo)
@@ -1668,43 +1650,6 @@ bool CDVDDemuxFFmpeg::IsProgramChange()
       return true;
   }
   return false;
-}
-
-std::string CDVDDemuxFFmpeg::GetStereoModeFromMetadata(AVDictionary *pMetadata)
-{
-  std::string stereoMode;
-  AVDictionaryEntry *tag = NULL;
-
-  // matroska
-  tag = av_dict_get(pMetadata, "stereo_mode", NULL, 0);
-  if (tag && tag->value)
-    stereoMode = tag->value;
-
-  // asf / wmv
-  if (stereoMode.empty())
-  {
-    tag = av_dict_get(pMetadata, "Stereoscopic", NULL, 0);
-    if (tag && tag->value)
-    {
-      tag = av_dict_get(pMetadata, "StereoscopicLayout", NULL, 0);
-      if (tag && tag->value)
-        stereoMode = ConvertCodecToInternalStereoMode(tag->value, WmvToInternalStereoModeMap);
-    }
-  }
-
-  return stereoMode;
-}
-
-std::string CDVDDemuxFFmpeg::ConvertCodecToInternalStereoMode(const std::string &mode, const StereoModeConversionMap *conversionMap)
-{
-  size_t i = 0;
-  while (conversionMap[i].name)
-  {
-    if (mode == conversionMap[i].name)
-      return conversionMap[i].mode;
-    i++;
-  }
-  return "";
 }
 
 void CDVDDemuxFFmpeg::ParsePacket(AVPacket *pkt)
