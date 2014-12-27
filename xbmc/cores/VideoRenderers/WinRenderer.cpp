@@ -718,6 +718,9 @@ void CWinRenderer::Render(DWORD flags)
     UpdateVideoFilter();
     if (m_bUseHQScaler)
       g_Windowing.FlushGPU();
+    LPDIRECT3DDEVICE9 pD3DDevice = g_Windowing.Get3DDevice();
+    pD3DDevice->SetVertexShader(NULL);
+    pD3DDevice->SetPixelShader(NULL);
     CWinRenderer::RenderProcessor(flags);
     return;
   }
